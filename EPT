@@ -1,54 +1,29 @@
--- ╔══════════════════════════════════════════════════════╗
--- ║       Elemental Powers Tycoon — by shxpe0x           ║
--- ║   Built on Fluent UI | Get Items | Keybind | Unload  ║
--- ╚══════════════════════════════════════════════════════╝
-
--- Prevent double-loading: unload old instance first
 if getgenv().EPT_Loaded then
     pcall(getgenv().EPT_Unload)
     task.wait(0.3)
 end
 
--- ════════════════════════════════════════════════════════
---  LOAD FLUENT UI + ADDONS
--- ════════════════════════════════════════════════════════
-local Fluent = loadstring(game:HttpGet(
-    "https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"
-))()
-local SaveManager = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"
-))()
-local InterfaceManager = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"
-))()
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
--- ════════════════════════════════════════════════════════
---  SERVICES
--- ════════════════════════════════════════════════════════
-local Players          = game:GetService("Players")
-local Workspace        = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
-local TeleportService  = game:GetService("TeleportService")
-local RunService       = game:GetService("RunService")
-local HttpService      = game:GetService("HttpService")
-local LocalPlayer      = Players.LocalPlayer
+local TeleportService = game:GetService("TeleportService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
 
--- ════════════════════════════════════════════════════════
---  GLOBAL STATE FLAGS
--- ════════════════════════════════════════════════════════
-getgenv().EPT_Loaded   = true
-getgenv().EPT_Running  = true
+getgenv().EPT_Loaded = true
+getgenv().EPT_Running = true
 
--- ════════════════════════════════════════════════════════
---  LOCAL STATE
--- ════════════════════════════════════════════════════════
 local GetAllItemsRunning = false
 local NoclipEnabled = false
 local NoclipConnection = nil
 local FlyEnabled = false
 local ClickTeleportEnabled = false
 
--- Keybinds
 local ActivateInputConnection = nil
 local TeleportInputConnection = nil
 local NoclipKeybindConnection = nil
@@ -59,12 +34,10 @@ local currentTeleportKey = Enum.KeyCode.LeftControl
 local currentNoclipKey = nil
 local currentFlyKey = nil
 
--- Feature Toggles
 local UseAllItemsEnabled = false
 local NoclipKeybindEnabled = false
 local FlyKeybindEnabled = false
 
--- Fly Settings
 local flySpeed = 50
 local flyTransparency = 0.75
 local FLYING = false
@@ -72,7 +45,6 @@ local useCFrameFly = false
 local bodyGyro, bodyVelocity, CFloop, flyNoclipConnection
 local CONTROL = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
 
--- Pad Teleport State
 local CurrentScanResults = {}
 local SelectedPlayer = nil
 local SelectedPad = nil
@@ -81,12 +53,8 @@ local PadTypes = {
     {Name = "UltraPad (AbilityPad2)", Path = "UltraPad.AbilityPad2"}
 }
 
--- Base Teleport State
 local AvailableBases = {}
 
--- ════════════════════════════════════════════════════════
---  FUNCTION: NOCLIP
--- ════════════════════════════════════════════════════════
 local function SetNoclip(state)
     NoclipEnabled = state
     
@@ -105,12 +73,7 @@ local function SetNoclip(state)
                 end
             end)
         end
-        
-        Fluent:Notify({
-            Title    = "🚶 Noclip ON",
-            Content  = "Walk through walls enabled",
-            Duration = 2
-        })
+        Fluent:Notify({Title = "Noclip ON", Content = "Walk through walls enabled", Duration = 2})
     else
         if NoclipConnection then
             NoclipConnection:Disconnect()
@@ -125,23 +88,15 @@ local function SetNoclip(state)
                 end
             end
         end
-        
-        Fluent:Notify({
-            Title    = "🚶 Noclip OFF",
-            Content  = "Collision restored",
-            Duration = 2
-        })
+        Fluent:Notify({Title = "Noclip OFF", Content = "Collision restored", Duration = 2})
     end
 end
 
--- ════════════════════════════════════════════════════════
---  FUNCTION: FLY
--- ════════════════════════════════════════════════════════
 local function FlyNoclipLoop()
     local character = LocalPlayer.Character
     if character then
         for _, child in pairs(character:GetDescendants()) do
-            if child:IsA("BasePart") and child.CanCollide == true then
+            if child:IsA("BasePart") and child.CanCollide then
                 child.CanCollide = false
             end
         end
@@ -160,11 +115,9 @@ local function startCFrameFlyLoop()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
         
-        local effectiveSpeed = flySpeed
-        local moveDirection = humanoid.MoveDirection * (effectiveSpeed * deltaTime)
+        local moveDirection = humanoid.MoveDirection * (flySpeed * deltaTime)
         local headCFrame = Head.CFrame
-        local camera = workspace.CurrentCamera
-        local cameraCFrame = camera.CFrame
+        local cameraCFrame = workspace.CurrentCamera.CFrame
         
         local cameraOffset = headCFrame:ToObjectSpace(cameraCFrame).Position
         cameraCFrame = cameraCFrame * CFrame.new(-cameraOffset.X, -cameraOffset.Y, -cameraOffset.Z + 1)
@@ -173,7 +126,6 @@ local function startCFrameFlyLoop()
         local headPosition = headCFrame.Position
         
         local objectSpaceVelocity = CFrame.new(cameraPosition, Vector3.new(headPosition.X, cameraPosition.Y, headPosition.Z)):VectorToObjectSpace(moveDirection)
-        
         Head.CFrame = CFrame.new(headPosition) * (cameraCFrame - cameraPosition) * CFrame.new(objectSpaceVelocity)
     end)
 end
@@ -198,9 +150,7 @@ local function startBodyMoverFlyLoop()
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
         
-        if humanoid then
-            humanoid.PlatformStand = true
-        end
+        humanoid.PlatformStand = true
         
         repeat
             task.wait()
@@ -223,7 +173,6 @@ end
 local function SetFly(state)
     FlyEnabled = state
     local character = LocalPlayer.Character
-    
     if not character or not character.Parent then return end
     
     if FlyEnabled then
@@ -244,23 +193,12 @@ local function SetFly(state)
             startBodyMoverFlyLoop()
         end
         
-        Fluent:Notify({
-            Title    = "✈️ Fly ON",
-            Content  = "WASD + Q/E to fly",
-            Duration = 2
-        })
+        Fluent:Notify({Title = "Fly ON", Content = "WASD + Q/E to fly", Duration = 2})
     else
         FLYING = false
         
-        if CFloop then
-            CFloop:Disconnect()
-            CFloop = nil
-        end
-        
-        if flyNoclipConnection then
-            flyNoclipConnection:Disconnect()
-            flyNoclipConnection = nil
-        end
+        if CFloop then CFloop:Disconnect(); CFloop = nil end
+        if flyNoclipConnection then flyNoclipConnection:Disconnect(); flyNoclipConnection = nil end
         
         if character and character:FindFirstChild("Head") then
             character.Head.Anchored = false
@@ -275,56 +213,38 @@ local function SetFly(state)
             end
         end
         
-        Fluent:Notify({
-            Title    = "✈️ Fly OFF",
-            Content  = "Flight disabled",
-            Duration = 2
-        })
+        Fluent:Notify({Title = "Fly OFF", Content = "Flight disabled", Duration = 2})
     end
 end
 
--- Fly WASD Controls
 local keyMap = {
-    [Enum.KeyCode.W] = "F",
-    [Enum.KeyCode.S] = "B",
-    [Enum.KeyCode.A] = "L",
-    [Enum.KeyCode.D] = "R",
-    [Enum.KeyCode.Q] = "Q",
-    [Enum.KeyCode.E] = "E"
+    [Enum.KeyCode.W] = "F", [Enum.KeyCode.S] = "B",
+    [Enum.KeyCode.A] = "L", [Enum.KeyCode.D] = "R",
+    [Enum.KeyCode.Q] = "Q", [Enum.KeyCode.E] = "E"
 }
 
 local valueMap = {
-    [Enum.KeyCode.W] = 1,
-    [Enum.KeyCode.S] = -1,
-    [Enum.KeyCode.A] = -1,
-    [Enum.KeyCode.D] = 1,
-    [Enum.KeyCode.Q] = -1,
-    [Enum.KeyCode.E] = 1
+    [Enum.KeyCode.W] = 1, [Enum.KeyCode.S] = -1,
+    [Enum.KeyCode.A] = -1, [Enum.KeyCode.D] = 1,
+    [Enum.KeyCode.Q] = -1, [Enum.KeyCode.E] = 1
 }
 
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe or not keyMap[input.KeyCode] then return end
-    if FLYING then
-        CONTROL[keyMap[input.KeyCode]] = valueMap[input.KeyCode]
-    end
+    if FLYING then CONTROL[keyMap[input.KeyCode]] = valueMap[input.KeyCode] end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if keyMap[input.KeyCode] then
-        CONTROL[keyMap[input.KeyCode]] = 0
-    end
+    if keyMap[input.KeyCode] then CONTROL[keyMap[input.KeyCode]] = 0 end
 end)
 
--- ════════════════════════════════════════════════════════
---  FUNCTION: ACTIVATE ALL ITEMS
--- ════════════════════════════════════════════════════════
 local function ActivateAllItems()
     local character = LocalPlayer.Character
-    local backpack  = LocalPlayer:FindFirstChild("Backpack")
-    local humanoid  = character and character:FindFirstChildOfClass("Humanoid")
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if not (character and backpack and humanoid) then return 0 end
 
-    local count    = 0
+    local count = 0
     local allTools = {}
 
     for _, tool in ipairs(backpack:GetChildren()) do
@@ -344,16 +264,9 @@ local function ActivateAllItems()
     return count
 end
 
--- ════════════════════════════════════════════════════════
---  FUNCTION: GET ALL BUTTONS ONLY
--- ════════════════════════════════════════════════════════
 local function GetAllButtons()
     if GetAllItemsRunning then
-        Fluent:Notify({
-            Title    = "⚠️ Already Running",
-            Content  = "Get All Buttons is already active!",
-            Duration = 3
-        })
+        Fluent:Notify({Title = "Already Running", Content = "Get All Buttons is already active!", Duration = 3})
         return
     end
 
@@ -361,10 +274,7 @@ local function GetAllButtons()
 
     task.spawn(function()
         local humanoidRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if not humanoidRootPart then
-            GetAllItemsRunning = false
-            return
-        end
+        if not humanoidRootPart then GetAllItemsRunning = false; return end
 
         local function spamTouch(part)
             if part and getgenv().EPT_Running then
@@ -379,36 +289,22 @@ local function GetAllButtons()
 
         for _, part in pairs(Workspace:GetDescendants()) do
             if not getgenv().EPT_Running then break end
-            if part:IsA("BasePart") then
-                local partName = part.Name:lower()
-                if partName:match("button") then
-                    spamTouch(part)
-                    buttonsFound = buttonsFound + 1
-                    task.wait(0.01)
-                end
+            if part:IsA("BasePart") and part.Name:lower():match("button") then
+                spamTouch(part)
+                buttonsFound = buttonsFound + 1
+                task.wait(0.01)
             end
         end
 
         GetAllItemsRunning = false
-
-        Fluent:Notify({
-            Title    = "✅ Complete",
-            Content  = "Touched " .. buttonsFound .. " buttons",
-            Duration = 3
-        })
+        Fluent:Notify({Title = "Complete", Content = "Touched " .. buttonsFound .. " buttons", Duration = 3})
     end)
 end
 
--- ════════════════════════════════════════════════════════
---  FUNCTION: SERVER REJOIN
--- ════════════════════════════════════════════════════════
 local function ServerRejoin()
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId)
 end
 
--- ════════════════════════════════════════════════════════
---  FUNCTION: SERVER HOP
--- ════════════════════════════════════════════════════════
 local function ServerHop()
     local PlaceID = game.PlaceId
     local AllIDs = {}
@@ -438,15 +334,13 @@ local function ServerHop()
         end
         
         local num = 0
-        for i,v in pairs(Site.data) do
+        for i, v in pairs(Site.data) do
             local Possible = true
             ID = tostring(v.id)
             if tonumber(v.maxPlayers) > tonumber(v.playing) then
-                for _,Existing in pairs(AllIDs) do
+                for _, Existing in pairs(AllIDs) do
                     if num ~= 0 then
-                        if ID == tostring(Existing) then
-                            Possible = false
-                        end
+                        if ID == tostring(Existing) then Possible = false end
                     else
                         if tonumber(actualHour) ~= tonumber(Existing) then
                             pcall(function()
@@ -459,7 +353,7 @@ local function ServerHop()
                     num = num + 1
                 end
                 
-                if Possible == true then
+                if Possible then
                     table.insert(AllIDs, ID)
                     wait()
                     pcall(function()
@@ -473,44 +367,25 @@ local function ServerHop()
         end
     end
     
-    Fluent:Notify({
-        Title    = "🔄 Server Hop",
-        Content  = "Finding new server...",
-        Duration = 3
-    })
+    Fluent:Notify({Title = "Server Hop", Content = "Finding new server...", Duration = 3})
     
     while wait() do
         pcall(function()
             TPReturner()
-            if foundAnything ~= "" then
-                TPReturner()
-            end
+            if foundAnything ~= "" then TPReturner() end
         end)
     end
 end
 
--- ════════════════════════════════════════════════════════
---  FUNCTION: LOAD DEX EXPLORER
--- ════════════════════════════════════════════════════════
 local function LoadDexExplorer()
     pcall(function()
         loadstring(game:HttpGet("https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua"))()
-        Fluent:Notify({
-            Title    = "🔍 Dex Loaded",
-            Content  = "Explorer ready",
-            Duration = 2
-        })
+        Fluent:Notify({Title = "Dex Loaded", Content = "Explorer ready", Duration = 2})
     end)
 end
 
--- ════════════════════════════════════════════════════════
---  PAD TELEPORT FUNCTIONS
--- ════════════════════════════════════════════════════════
 local function GetPlayerTeam(player)
-    if player.Team then
-        return player.Team.Name
-    end
-    return "No Team"
+    return player.Team and player.Team.Name or "No Team"
 end
 
 local function CheckPadExists(playerName, padPath)
@@ -523,24 +398,18 @@ local function CheckPadExists(playerName, padPath)
     local assets = playerTycoon:FindFirstChild("Assets")
     if not assets then return false, nil end
     
-    local pathParts = string.split(padPath, ".")
     local current = assets
-    
-    for _, part in ipairs(pathParts) do
+    for _, part in ipairs(string.split(padPath, ".")) do
         current = current:FindFirstChild(part)
         if not current then return false, nil end
     end
     
-    if current:IsA("BasePart") then
-        return true, current
-    end
-    
+    if current:IsA("BasePart") then return true, current end
     return false, nil
 end
 
 local function ScanAllPlayers()
     local results = {}
-    
     for _, player in ipairs(Players:GetPlayers()) do
         local playerData = {
             Player = player,
@@ -560,18 +429,13 @@ local function ScanAllPlayers()
             end
         end
         
-        if #playerData.Pads > 0 then
-            table.insert(results, playerData)
-        end
+        if #playerData.Pads > 0 then table.insert(results, playerData) end
     end
-    
     return results
 end
 
 local function TeleportToPad(padInstance)
-    local character = LocalPlayer.Character
-    local hrp = character and character:FindFirstChild("HumanoidRootPart")
-    
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if hrp and padInstance then
         hrp.CFrame = padInstance.CFrame + Vector3.new(0, 3, 0)
         return true
@@ -579,27 +443,16 @@ local function TeleportToPad(padInstance)
     return false
 end
 
--- ════════════════════════════════════════════════════════
---  TREASURE TELEPORT FUNCTIONS
--- ════════════════════════════════════════════════════════
 local function ScanAndTeleportToTreasure()
     local treasureFolder = Workspace:FindFirstChild("Treasure")
     if not treasureFolder then
-        Fluent:Notify({
-            Title    = "❌ Not Found",
-            Content  = "Treasure folder doesn't exist",
-            Duration = 3
-        })
+        Fluent:Notify({Title = "Not Found", Content = "Treasure folder doesn't exist", Duration = 3})
         return
     end
     
     local chestsFolder = treasureFolder:FindFirstChild("Chests")
     if not chestsFolder then
-        Fluent:Notify({
-            Title    = "❌ Not Found",
-            Content  = "Chests folder doesn't exist",
-            Duration = 3
-        })
+        Fluent:Notify({Title = "Not Found", Content = "Chests folder doesn't exist", Duration = 3})
         return
     end
     
@@ -618,11 +471,7 @@ local function ScanAndTeleportToTreasure()
     end
     
     if #availableTreasures == 0 then
-        Fluent:Notify({
-            Title    = "❌ No Treasures",
-            Content  = "All chests collected!",
-            Duration = 3
-        })
+        Fluent:Notify({Title = "No Treasures", Content = "All chests collected!", Duration = 3})
         return
     end
     
@@ -631,45 +480,30 @@ local function ScanAndTeleportToTreasure()
     
     if hrp and randomTreasure.Instance then
         hrp.CFrame = randomTreasure.Instance.CFrame + Vector3.new(0, 5, 0)
-        Fluent:Notify({
-            Title    = "💎 Teleported",
-            Content  = randomTreasure.Name .. " (" .. #availableTreasures .. " available)",
-            Duration = 3
-        })
+        Fluent:Notify({Title = "Teleported", Content = randomTreasure.Name .. " (" .. #availableTreasures .. " available)", Duration = 3})
     end
 end
 
--- ════════════════════════════════════════════════════════
---  BASE TELEPORT FUNCTIONS
--- ════════════════════════════════════════════════════════
 local function ScanBases()
     AvailableBases = {}
-    
     local tycoons = Workspace:FindFirstChild("Tycoons")
     if not tycoons then return end
     
     for _, obj in ipairs(tycoons:GetChildren()) do
         if obj.Name == "Claim" or not obj:IsA("Model") then continue end
-        
         local auxiliary = obj:FindFirstChild("Auxiliary")
         if auxiliary then
             local floor = auxiliary:FindFirstChild("Floor")
             if floor then
                 local part = floor:FindFirstChild("Part")
                 if part and part:IsA("BasePart") then
-                    table.insert(AvailableBases, {
-                        Name = obj.Name,
-                        Instance = part
-                    })
+                    table.insert(AvailableBases, {Name = obj.Name, Instance = part})
                 end
             end
         end
     end
 end
 
--- ════════════════════════════════════════════════════════
---  SPECIAL TELEPORT FUNCTIONS
--- ════════════════════════════════════════════════════════
 local function TeleportToLocation(path, offset)
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
@@ -685,653 +519,454 @@ local function TeleportToLocation(path, offset)
     return false
 end
 
--- ════════════════════════════════════════════════════════
---  CREATE WINDOW
--- ════════════════════════════════════════════════════════
 local Window = Fluent:CreateWindow({
-    Title       = "Elemental Powers Tycoon",
-    SubTitle    = "by shxpe0x",
-    TabWidth    = 160,
-    Size        = UDim2.fromOffset(560, 420),
-    Acrylic     = true,
-    Theme       = "Dark",
+    Title = "Elemental Powers Tycoon",
+    SubTitle = "by shxpe0x",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(560, 420),
+    Acrylic = true,
+    Theme = "Dark",
     MinimizeKey = Enum.KeyCode.RightControl
 })
 
 local Tabs = {
-    Automation = Window:AddTab({ Title = "Automation", Icon = "zap"       }),
-    Character  = Window:AddTab({ Title = "Character",  Icon = "user"      }),
-    Teleports  = Window:AddTab({ Title = "Teleports",  Icon = "map-pin"   }),
-    Misc       = Window:AddTab({ Title = "Misc",       Icon = "settings"  }),
-    Settings   = Window:AddTab({ Title = "Settings",   Icon = "sliders"   })
+    Automation = Window:AddTab({Title = "Automation", Icon = "zap"}),
+    Character = Window:AddTab({Title = "Character", Icon = "user"}),
+    Teleports = Window:AddTab({Title = "Teleports", Icon = "map-pin"}),
+    Misc = Window:AddTab({Title = "Misc", Icon = "settings"}),
+    Settings = Window:AddTab({Title = "Settings", Icon = "sliders"})
 }
 
 local Options = Fluent.Options
 
--- ════════════════════════════════════════════════════════
---  KEYBIND RECONNECT FUNCTIONS
--- ════════════════════════════════════════════════════════
 local function ReconnectActivateInput()
-    if ActivateInputConnection then
-        ActivateInputConnection:Disconnect()
-        ActivateInputConnection = nil
-    end
-    
+    if ActivateInputConnection then ActivateInputConnection:Disconnect(); ActivateInputConnection = nil end
     if not currentActivateKey or not UseAllItemsEnabled then return end
     
     ActivateInputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if not getgenv().EPT_Running or not UseAllItemsEnabled then return end
+        if gameProcessed or not getgenv().EPT_Running or not UseAllItemsEnabled then return end
         if input.KeyCode == currentActivateKey then
             task.spawn(function()
                 local n = ActivateAllItems()
-                Fluent:Notify({
-                    Title    = "⚡ Items Used",
-                    Content  = tostring(n) .. " items activated",
-                    Duration = 2
-                })
+                Fluent:Notify({Title = "Items Used", Content = tostring(n) .. " items activated", Duration = 2})
             end)
         end
     end)
 end
 
 local function ReconnectNoclipInput()
-    if NoclipKeybindConnection then
-        NoclipKeybindConnection:Disconnect()
-        NoclipKeybindConnection = nil
-    end
-    
+    if NoclipKeybindConnection then NoclipKeybindConnection:Disconnect(); NoclipKeybindConnection = nil end
     if not currentNoclipKey or not NoclipKeybindEnabled then return end
     
     NoclipKeybindConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if not getgenv().EPT_Running or not NoclipKeybindEnabled then return end
-        if input.KeyCode == currentNoclipKey then
-            SetNoclip(not NoclipEnabled)
-        end
+        if gameProcessed or not getgenv().EPT_Running or not NoclipKeybindEnabled then return end
+        if input.KeyCode == currentNoclipKey then SetNoclip(not NoclipEnabled) end
     end)
 end
 
 local function ReconnectFlyInput()
-    if FlyKeybindConnection then
-        FlyKeybindConnection:Disconnect()
-        FlyKeybindConnection = nil
-    end
-    
+    if FlyKeybindConnection then FlyKeybindConnection:Disconnect(); FlyKeybindConnection = nil end
     if not currentFlyKey or not FlyKeybindEnabled then return end
     
     FlyKeybindConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if not getgenv().EPT_Running or not FlyKeybindEnabled then return end
-        if input.KeyCode == currentFlyKey then
-            SetFly(not FlyEnabled)
-        end
+        if gameProcessed or not getgenv().EPT_Running or not FlyKeybindEnabled then return end
+        if input.KeyCode == currentFlyKey then SetFly(not FlyEnabled) end
     end)
 end
 
 local Mouse = LocalPlayer:GetMouse()
 
 local function ReconnectTeleportInput()
-    if TeleportInputConnection then
-        TeleportInputConnection:Disconnect()
-        TeleportInputConnection = nil
-    end
-    
+    if TeleportInputConnection then TeleportInputConnection:Disconnect(); TeleportInputConnection = nil end
     if not ClickTeleportEnabled then return end
     
     TeleportInputConnection = Mouse.Button1Down:Connect(function()
         if not getgenv().EPT_Running or not ClickTeleportEnabled then return end
-        if not UserInputService:IsKeyDown(currentTeleportKey) then return end
-        if not Mouse.Target then return end
+        if not UserInputService:IsKeyDown(currentTeleportKey) or not Mouse.Target then return end
         
         local character = LocalPlayer.Character
         if character then
             character:MoveTo(Mouse.Hit.p)
-            Fluent:Notify({
-                Title    = "📍 Click TP",
-                Content  = "Teleported to cursor",
-                Duration = 2
-            })
+            Fluent:Notify({Title = "Click TP", Content = "Teleported to cursor", Duration = 2})
         end
     end)
 end
 
--- ════════════════════════════════════════════════════════
---  AUTOMATION TAB
--- ════════════════════════════════════════════════════════
-do
-    Tabs.Automation:AddParagraph({
-        Title = "⚡ Auto Actions",
-        Content = "Automate farming and item collection"
-    })
+-- Automation
 
-    Tabs.Automation:AddButton({
-        Title       = "Get All Buttons",
-        Description = "Automatically touch all tycoon buttons",
-        Callback    = function()
-            GetAllButtons()
-        end
-    })
+Tabs.Automation:AddParagraph({Title = "Auto Actions", Content = "Automate farming and item collection"})
 
-    Tabs.Automation:AddToggle("UseAllItemsToggle", {
-        Title       = "Use All Items",
-        Description = "Enable keybind to use all tools at once",
-        Default     = false,
-        Callback    = function(Value)
-            UseAllItemsEnabled = Value
+Tabs.Automation:AddButton({
+    Title = "Get All Buttons",
+    Description = "Automatically touch all tycoon buttons",
+    Callback = GetAllButtons
+})
+
+Tabs.Automation:AddToggle("UseAllItemsToggle", {
+    Title = "Use All Items",
+    Description = "Enable keybind to use all tools at once",
+    Default = false,
+    Callback = function(Value)
+        UseAllItemsEnabled = Value
+        ReconnectActivateInput()
+        Fluent:Notify({Title = Value and "Enabled" or "Disabled", Content = "Use All Items " .. (Value and "ON" or "OFF"), Duration = 2})
+    end
+})
+
+Tabs.Automation:AddKeybind("ActivateKey", {
+    Title = "Use Items Key",
+    Mode = "Always",
+    Default = "None",
+    Callback = function() end,
+    ChangedCallback = function(New)
+        local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
+        if newKeyStr == "None" or newKeyStr == "" then
+            currentActivateKey = nil
             ReconnectActivateInput()
-            Fluent:Notify({
-                Title    = Value and "✅ Enabled" or "❌ Disabled",
-                Content  = "Use All Items " .. (Value and "ON" or "OFF"),
-                Duration = 2
-            })
-        end
-    })
-
-    Tabs.Automation:AddKeybind("ActivateKey", {
-        Title   = "Use Items Key",
-        Mode    = "Always",
-        Default = "None",
-        Callback = function() end,
-        ChangedCallback = function(New)
-            local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
-            
-            if newKeyStr == "None" or newKeyStr == "" then
-                currentActivateKey = nil
-                ReconnectActivateInput()
-            else
-                pcall(function()
-                    currentActivateKey = Enum.KeyCode[newKeyStr]
-                    ReconnectActivateInput()
-                    Fluent:Notify({
-                        Title    = "⌨️ Key Set",
-                        Content  = newKeyStr,
-                        Duration = 2
-                    })
-                end)
-            end
-        end
-    })
-end
-
--- ════════════════════════════════════════════════════════
---  CHARACTER TAB
--- ════════════════════════════════════════════════════════
-do
-    Tabs.Character:AddParagraph({
-        Title = "👤 Movement",
-        Content = "Character movement abilities"
-    })
-
-    -- Noclip Section
-    Tabs.Character:AddToggle("NoclipKeybindToggle", {
-        Title       = "Noclip",
-        Description = "Walk through walls (toggle with keybind)",
-        Default     = false,
-        Callback    = function(Value)
-            NoclipKeybindEnabled = Value
-            ReconnectNoclipInput()
-            Fluent:Notify({
-                Title    = Value and "✅ Noclip Keybind ON" or "❌ Noclip Keybind OFF",
-                Content  = Value and "Press key to toggle" or "Disabled",
-                Duration = 2
-            })
-        end
-    })
-
-    Tabs.Character:AddKeybind("NoclipKey", {
-        Title   = "Noclip Toggle Key",
-        Mode    = "Always",
-        Default = "None",
-        Callback = function() end,
-        ChangedCallback = function(New)
-            local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
-            
-            if newKeyStr == "None" or newKeyStr == "" then
-                currentNoclipKey = nil
-                ReconnectNoclipInput()
-            else
-                pcall(function()
-                    currentNoclipKey = Enum.KeyCode[newKeyStr]
-                    ReconnectNoclipInput()
-                    Fluent:Notify({
-                        Title    = "⌨️ Noclip Key Set",
-                        Content  = newKeyStr,
-                        Duration = 2
-                    })
-                end)
-            end
-        end
-    })
-
-    -- Fly Section
-    Tabs.Character:AddToggle("FlyKeybindToggle", {
-        Title       = "Fly",
-        Description = "Enable flight (WASD + Q/E, toggle with keybind)",
-        Default     = false,
-        Callback    = function(Value)
-            FlyKeybindEnabled = Value
-            ReconnectFlyInput()
-            Fluent:Notify({
-                Title    = Value and "✅ Fly Keybind ON" or "❌ Fly Keybind OFF",
-                Content  = Value and "Press key to toggle" or "Disabled",
-                Duration = 2
-            })
-        end
-    })
-
-    Tabs.Character:AddKeybind("FlyKey", {
-        Title   = "Fly Toggle Key",
-        Mode    = "Always",
-        Default = "None",
-        Callback = function() end,
-        ChangedCallback = function(New)
-            local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
-            
-            if newKeyStr == "None" or newKeyStr == "" then
-                currentFlyKey = nil
-                ReconnectFlyInput()
-            else
-                pcall(function()
-                    currentFlyKey = Enum.KeyCode[newKeyStr]
-                    ReconnectFlyInput()
-                    Fluent:Notify({
-                        Title    = "⌨️ Fly Key Set",
-                        Content  = newKeyStr,
-                        Duration = 2
-                    })
-                end)
-            end
-        end
-    })
-
-    Tabs.Character:AddSlider("FlySpeed", {
-        Title       = "Fly Speed",
-        Default     = 50,
-        Min         = 10,
-        Max         = 500,
-        Rounding    = 0,
-        Callback    = function(Value)
-            flySpeed = Value
-        end
-    })
-
-    Tabs.Character:AddToggle("CFrameFlyToggle", {
-        Title       = "CFrame Fly Mode",
-        Description = "Alternative flight method",
-        Default     = false,
-        Callback    = function(Value)
-            useCFrameFly = Value
-            if FlyEnabled then
-                SetFly(false)
-                task.wait(0.1)
-                SetFly(true)
-            end
-        end
-    })
-
-    -- Click Teleport Section
-    Tabs.Character:AddParagraph({
-        Title = "🖱️ Click Teleport",
-        Content = "Hold key + click to teleport"
-    })
-
-    Tabs.Character:AddToggle("ClickTeleportToggle", {
-        Title       = "Click Teleport",
-        Description = "Enable click-to-teleport",
-        Default     = false,
-        Callback    = function(Value)
-            ClickTeleportEnabled = Value
-            ReconnectTeleportInput()
-            Fluent:Notify({
-                Title    = Value and "✅ Click TP ON" or "❌ Click TP OFF",
-                Content  = Value and "Hold key + click" or "Disabled",
-                Duration = 2
-            })
-        end
-    })
-
-    Tabs.Character:AddKeybind("TeleportKey", {
-        Title   = "Click TP Key",
-        Mode    = "Always",
-        Default = "LeftControl",
-        Callback = function() end,
-        ChangedCallback = function(New)
-            local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
-            
+        else
             pcall(function()
-                currentTeleportKey = Enum.KeyCode[newKeyStr]
-                ReconnectTeleportInput()
-                Fluent:Notify({
-                    Title    = "🖱️ Click TP Key",
-                    Content  = newKeyStr .. " + Click",
-                    Duration = 2
-                })
+                currentActivateKey = Enum.KeyCode[newKeyStr]
+                ReconnectActivateInput()
+                Fluent:Notify({Title = "Key Set", Content = newKeyStr, Duration = 2})
             end)
         end
-    })
-end
+    end
+})
 
--- ════════════════════════════════════════════════════════
---  TELEPORTS TAB
--- ════════════════════════════════════════════════════════
-do
-    -- Player Pads Section
-    Tabs.Teleports:AddParagraph({
-        Title = "🎯 Player Ability Pads",
-        Content = "Steal abilities from other players"
-    })
+-- Character
 
-    local ScanResultsParagraph = Tabs.Teleports:AddParagraph({
-        Title = "Scan Results",
-        Content = "Press 'Scan Pads' to find players"
-    })
+Tabs.Character:AddParagraph({Title = "Movement", Content = "Character movement abilities"})
 
-    local function UpdateScanDisplay()
-        local resultText = "Found " .. #CurrentScanResults .. " player(s):\n\n"
-        
-        for i, data in ipairs(CurrentScanResults) do
-            resultText = resultText .. "• " .. data.DisplayName 
-            resultText = resultText .. " [" .. data.Team .. "] — "
-            resultText = resultText .. #data.Pads .. " pad(s)\n"
-        end
-        
-        if #CurrentScanResults == 0 then
-            resultText = "No pads found"
-        end
-        
-        ScanResultsParagraph:SetDesc(resultText)
-        
-        local playerNames = {}
-        for _, data in ipairs(CurrentScanResults) do
-            table.insert(playerNames, data.DisplayName .. " [" .. data.Team .. "]")
-        end
-        
-        if #playerNames > 0 then
-            Options.PlayerSelect:SetValues(playerNames)
+Tabs.Character:AddToggle("NoclipKeybindToggle", {
+    Title = "Noclip",
+    Description = "Walk through walls (toggle with keybind)",
+    Default = false,
+    Callback = function(Value)
+        NoclipKeybindEnabled = Value
+        ReconnectNoclipInput()
+        Fluent:Notify({Title = Value and "Noclip Keybind ON" or "Noclip Keybind OFF", Content = Value and "Press key to toggle" or "Disabled", Duration = 2})
+    end
+})
+
+Tabs.Character:AddKeybind("NoclipKey", {
+    Title = "Noclip Toggle Key",
+    Mode = "Always",
+    Default = "None",
+    Callback = function() end,
+    ChangedCallback = function(New)
+        local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
+        if newKeyStr == "None" or newKeyStr == "" then
+            currentNoclipKey = nil
+            ReconnectNoclipInput()
         else
-            Options.PlayerSelect:SetValues({"Scan first"})
+            pcall(function()
+                currentNoclipKey = Enum.KeyCode[newKeyStr]
+                ReconnectNoclipInput()
+                Fluent:Notify({Title = "Noclip Key Set", Content = newKeyStr, Duration = 2})
+            end)
         end
     end
+})
 
-    Tabs.Teleports:AddButton({
-        Title       = "Scan Pads",
-        Description = "Find available player pads",
-        Callback    = function()
-            CurrentScanResults = ScanAllPlayers()
-            UpdateScanDisplay()
-            Fluent:Notify({
-                Title    = "✅ Scan Done",
-                Content  = #CurrentScanResults .. " player(s) found",
-                Duration = 2
-            })
+Tabs.Character:AddToggle("FlyKeybindToggle", {
+    Title = "Fly",
+    Description = "Enable flight (WASD + Q/E, toggle with keybind)",
+    Default = false,
+    Callback = function(Value)
+        FlyKeybindEnabled = Value
+        ReconnectFlyInput()
+        Fluent:Notify({Title = Value and "Fly Keybind ON" or "Fly Keybind OFF", Content = Value and "Press key to toggle" or "Disabled", Duration = 2})
+    end
+})
+
+Tabs.Character:AddKeybind("FlyKey", {
+    Title = "Fly Toggle Key",
+    Mode = "Always",
+    Default = "None",
+    Callback = function() end,
+    ChangedCallback = function(New)
+        local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
+        if newKeyStr == "None" or newKeyStr == "" then
+            currentFlyKey = nil
+            ReconnectFlyInput()
+        else
+            pcall(function()
+                currentFlyKey = Enum.KeyCode[newKeyStr]
+                ReconnectFlyInput()
+                Fluent:Notify({Title = "Fly Key Set", Content = newKeyStr, Duration = 2})
+            end)
         end
-    })
+    end
+})
 
-    Tabs.Teleports:AddDropdown("PlayerSelect", {
-        Title = "Select Player",
-        Values = {"Scan first"},
-        Multi = false,
-        Default = 1,
-        Callback = function(Value)
-            if not Value or Value == "Scan first" then return end
-            
-            for _, data in ipairs(CurrentScanResults) do
-                local displayString = data.DisplayName .. " [" .. data.Team .. "]"
-                if Value == displayString then
-                    SelectedPlayer = data
-                    
-                    local padNames = {}
-                    for _, pad in ipairs(data.Pads) do
-                        table.insert(padNames, pad.Type)
-                    end
-                    
-                    if #padNames > 0 then
-                        Options.PadSelect:SetValues(padNames)
-                        Options.PadSelect:SetValue(padNames[1])
-                        SelectedPad = data.Pads[1]
-                    end
-                    break
-                end
-            end
-        end
-    })
+Tabs.Character:AddSlider("FlySpeed", {
+    Title = "Fly Speed",
+    Default = 50,
+    Min = 10,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(Value) flySpeed = Value end
+})
 
-    Tabs.Teleports:AddDropdown("PadSelect", {
-        Title = "Select Pad",
-        Values = {"Select player first"},
-        Multi = false,
-        Default = 1,
-        Callback = function(Value)
-            if not Value or Value == "Select player first" or not SelectedPlayer then return end
-            
-            for _, pad in ipairs(SelectedPlayer.Pads) do
-                if pad.Type == Value then
-                    SelectedPad = pad
-                    break
-                end
-            end
-        end
-    })
+Tabs.Character:AddToggle("CFrameFlyToggle", {
+    Title = "CFrame Fly Mode",
+    Description = "Alternative flight method",
+    Default = false,
+    Callback = function(Value)
+        useCFrameFly = Value
+        if FlyEnabled then SetFly(false); task.wait(0.1); SetFly(true) end
+    end
+})
 
-    Tabs.Teleports:AddButton({
-        Title       = "TP to Selected Pad",
-        Description = "Teleport to chosen pad",
-        Callback    = function()
-            if not SelectedPlayer or not SelectedPad then
-                Fluent:Notify({
-                    Title    = "❌ Error",
-                    Content  = "Select player and pad first",
-                    Duration = 2
-                })
-                return
-            end
-            
-            if TeleportToPad(SelectedPad.Instance) then
-                Fluent:Notify({
-                    Title    = "✅ Teleported",
-                    Content  = SelectedPlayer.DisplayName .. "'s pad",
-                    Duration = 2
-                })
-            end
-        end
-    })
+Tabs.Character:AddParagraph({Title = "Click Teleport", Content = "Hold key + click to teleport"})
 
-    -- Treasures Section
-    Tabs.Teleports:AddParagraph({
-        Title = "💎 Treasure Chests",
-        Content = "Auto-scan and teleport to random chest"
-    })
+Tabs.Character:AddToggle("ClickTeleportToggle", {
+    Title = "Click Teleport",
+    Description = "Enable click-to-teleport",
+    Default = false,
+    Callback = function(Value)
+        ClickTeleportEnabled = Value
+        ReconnectTeleportInput()
+        Fluent:Notify({Title = Value and "Click TP ON" or "Click TP OFF", Content = Value and "Hold key + click" or "Disabled", Duration = 2})
+    end
+})
 
-    Tabs.Teleports:AddButton({
-        Title       = "TP to Random Treasure",
-        Description = "Auto-scan and teleport to available chest",
-        Callback    = function()
-            ScanAndTeleportToTreasure()
-        end
-    })
+Tabs.Character:AddKeybind("TeleportKey", {
+    Title = "Click TP Key",
+    Mode = "Always",
+    Default = "LeftControl",
+    Callback = function() end,
+    ChangedCallback = function(New)
+        local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
+        pcall(function()
+            currentTeleportKey = Enum.KeyCode[newKeyStr]
+            ReconnectTeleportInput()
+            Fluent:Notify({Title = "Click TP Key", Content = newKeyStr .. " + Click", Duration = 2})
+        end)
+    end
+})
 
-    -- Player Bases Section
-    Tabs.Teleports:AddParagraph({
-        Title = "🏠 Player Bases",
-        Content = "Teleport to player spawn locations"
-    })
+-- Teleports
 
-    local BaseInfoParagraph = Tabs.Teleports:AddParagraph({
-        Title = "Base Info",
-        Content = "Press 'Scan Bases' to find"
-    })
+Tabs.Teleports:AddParagraph({Title = "Player Ability Pads", Content = "Steal abilities from other players"})
 
-    Tabs.Teleports:AddButton({
-        Title       = "Scan Bases",
-        Description = "Find all player bases",
-        Callback    = function()
-            ScanBases()
-            
-            local infoText = #AvailableBases .. " base(s) found:\n"
-            for i, base in ipairs(AvailableBases) do
-                infoText = infoText .. "• " .. base.Name .. "\n"
-            end
-            
-            if #AvailableBases == 0 then
-                infoText = "No bases found"
-            end
-            
-            BaseInfoParagraph:SetDesc(infoText)
-            
-            local baseNames = {}
-            for _, base in ipairs(AvailableBases) do
-                table.insert(baseNames, base.Name)
-            end
-            
-            if #baseNames > 0 then
-                Options.BaseSelect:SetValues(baseNames)
-            else
-                Options.BaseSelect:SetValues({"Scan first"})
-            end
-            
-            Fluent:Notify({
-                Title    = "✅ Scan Done",
-                Content  = #AvailableBases .. " base(s) found",
-                Duration = 2
-            })
-        end
-    })
+local ScanResultsParagraph = Tabs.Teleports:AddParagraph({Title = "Scan Results", Content = "Press 'Scan Pads' to find players"})
 
-    Tabs.Teleports:AddDropdown("BaseSelect", {
-        Title = "Select Base",
-        Values = {"Scan first"},
-        Multi = false,
-        Default = 1,
-        Callback = function(Value)
-            if not Value or Value == "Scan first" then return end
-            
-            for _, base in ipairs(AvailableBases) do
-                if base.Name == Value then
-                    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp and base.Instance then
-                        hrp.CFrame = base.Instance.CFrame + Vector3.new(0, 5, 0)
-                        Fluent:Notify({
-                            Title    = "✅ Teleported",
-                            Content  = base.Name .. "'s base",
-                            Duration = 2
-                        })
-                    end
-                    break
-                end
-            end
-        end
-    })
-
-    -- Special Locations Section
-    Tabs.Teleports:AddParagraph({
-        Title = "📍 Special Locations",
-        Content = "Secret areas and arenas"
-    })
-
-    Tabs.Teleports:AddButton({
-        Title       = "Secret Item",
-        Description = "Hidden collectible location",
-        Callback    = function()
-            if TeleportToLocation("workspace.Map.Terrain:GetChildren()[24]") then
-                Fluent:Notify({Title = "✅ Teleported", Content = "Secret Item", Duration = 2})
-            else
-                Fluent:Notify({Title = "❌ Not Found", Content = "Secret Item", Duration = 2})
-            end
-        end
-    })
-
-    Tabs.Teleports:AddButton({
-        Title       = "Secret Place",
-        Description = "Hidden area",
-        Callback    = function()
-            if TeleportToLocation("workspace.Map:GetChildren()[22]") then
-                Fluent:Notify({Title = "✅ Teleported", Content = "Secret Place", Duration = 2})
-            else
-                Fluent:Notify({Title = "❌ Not Found", Content = "Secret Place", Duration = 2})
-            end
-        end
-    })
-
-    Tabs.Teleports:AddButton({
-        Title       = "Battle Arena",
-        Description = "PvP combat zone",
-        Callback    = function()
-            if TeleportToLocation("workspace.BattleArena") then
-                Fluent:Notify({Title = "✅ Teleported", Content = "Battle Arena", Duration = 2})
-            else
-                Fluent:Notify({Title = "❌ Not Found", Content = "Battle Arena", Duration = 2})
-            end
-        end
-    })
+local function UpdateScanDisplay()
+    local resultText = "Found " .. #CurrentScanResults .. " player(s):\n\n"
+    for _, data in ipairs(CurrentScanResults) do
+        resultText = resultText .. "• " .. data.DisplayName .. " [" .. data.Team .. "] — " .. #data.Pads .. " pad(s)\n"
+    end
+    if #CurrentScanResults == 0 then resultText = "No pads found" end
+    ScanResultsParagraph:SetDesc(resultText)
+    
+    local playerNames = {}
+    for _, data in ipairs(CurrentScanResults) do
+        table.insert(playerNames, data.DisplayName .. " [" .. data.Team .. "]")
+    end
+    Options.PlayerSelect:SetValues(#playerNames > 0 and playerNames or {"Scan first"})
 end
 
--- ════════════════════════════════════════════════════════
---  MISC TAB
--- ════════════════════════════════════════════════════════
-do
-    Tabs.Misc:AddParagraph({
-        Title = "🛠️ Utilities",
-        Content = "Additional tools and features"
-    })
+Tabs.Teleports:AddButton({
+    Title = "Scan Pads",
+    Description = "Find available player pads",
+    Callback = function()
+        CurrentScanResults = ScanAllPlayers()
+        UpdateScanDisplay()
+        Fluent:Notify({Title = "Scan Done", Content = #CurrentScanResults .. " player(s) found", Duration = 2})
+    end
+})
 
-    Tabs.Misc:AddButton({
-        Title       = "Dex Explorer",
-        Description = "Advanced game explorer",
-        Callback    = function()
-            LoadDexExplorer()
+Tabs.Teleports:AddDropdown("PlayerSelect", {
+    Title = "Select Player",
+    Values = {"Scan first"},
+    Multi = false,
+    Default = 1,
+    Callback = function(Value)
+        if not Value or Value == "Scan first" then return end
+        for _, data in ipairs(CurrentScanResults) do
+            if Value == data.DisplayName .. " [" .. data.Team .. "]" then
+                SelectedPlayer = data
+                local padNames = {}
+                for _, pad in ipairs(data.Pads) do table.insert(padNames, pad.Type) end
+                if #padNames > 0 then
+                    Options.PadSelect:SetValues(padNames)
+                    Options.PadSelect:SetValue(padNames[1])
+                    SelectedPad = data.Pads[1]
+                end
+                break
+            end
         end
-    })
+    end
+})
 
-    Tabs.Misc:AddButton({
-        Title       = "Server Rejoin",
-        Description = "Rejoin current server",
-        Callback    = function()
-            Window:Dialog({
-                Title   = "Server Rejoin",
-                Content = "Rejoin this server?",
-                Buttons = {
-                    {Title = "Yes", Callback = ServerRejoin},
-                    {Title = "No", Callback = function() end}
-                }
-            })
+Tabs.Teleports:AddDropdown("PadSelect", {
+    Title = "Select Pad",
+    Values = {"Select player first"},
+    Multi = false,
+    Default = 1,
+    Callback = function(Value)
+        if not Value or Value == "Select player first" or not SelectedPlayer then return end
+        for _, pad in ipairs(SelectedPlayer.Pads) do
+            if pad.Type == Value then SelectedPad = pad; break end
         end
-    })
+    end
+})
 
-    Tabs.Misc:AddButton({
-        Title       = "Server Hop",
-        Description = "Find and join a different server",
-        Callback    = function()
-            Window:Dialog({
-                Title   = "Server Hop",
-                Content = "Find a new server?",
-                Buttons = {
-                    {Title = "Yes", Callback = function() task.spawn(ServerHop) end},
-                    {Title = "No", Callback = function() end}
-                }
-            })
+Tabs.Teleports:AddButton({
+    Title = "TP to Selected Pad",
+    Description = "Teleport to chosen pad",
+    Callback = function()
+        if not SelectedPlayer or not SelectedPad then
+            Fluent:Notify({Title = "Error", Content = "Select player and pad first", Duration = 2})
+            return
         end
-    })
-
-    Tabs.Misc:AddButton({
-        Title       = "Unload Script",
-        Description = "Remove GUI completely",
-        Callback    = function()
-            Window:Dialog({
-                Title   = "Unload Script",
-                Content = "Remove all features and GUI?",
-                Buttons = {
-                    {Title = "Unload", Callback = function() getgenv().EPT_Unload() end},
-                    {Title = "Cancel", Callback = function() end}
-                }
-            })
+        if TeleportToPad(SelectedPad.Instance) then
+            Fluent:Notify({Title = "Teleported", Content = SelectedPlayer.DisplayName .. "'s pad", Duration = 2})
         end
-    })
-end
+    end
+})
 
--- ════════════════════════════════════════════════════════
---  SETTINGS TAB
--- ════════════════════════════════════════════════════════
+Tabs.Teleports:AddParagraph({Title = "Treasure Chests", Content = "Auto-scan and teleport to random chest"})
+
+Tabs.Teleports:AddButton({
+    Title = "TP to Random Treasure",
+    Description = "Auto-scan and teleport to available chest",
+    Callback = ScanAndTeleportToTreasure
+})
+
+Tabs.Teleports:AddParagraph({Title = "Player Bases", Content = "Teleport to player spawn locations"})
+
+local BaseInfoParagraph = Tabs.Teleports:AddParagraph({Title = "Base Info", Content = "Press 'Scan Bases' to find"})
+
+Tabs.Teleports:AddButton({
+    Title = "Scan Bases",
+    Description = "Find all player bases",
+    Callback = function()
+        ScanBases()
+        local infoText = #AvailableBases .. " base(s) found:\n"
+        for _, base in ipairs(AvailableBases) do infoText = infoText .. "• " .. base.Name .. "\n" end
+        if #AvailableBases == 0 then infoText = "No bases found" end
+        BaseInfoParagraph:SetDesc(infoText)
+        
+        local baseNames = {}
+        for _, base in ipairs(AvailableBases) do table.insert(baseNames, base.Name) end
+        Options.BaseSelect:SetValues(#baseNames > 0 and baseNames or {"Scan first"})
+        Fluent:Notify({Title = "Scan Done", Content = #AvailableBases .. " base(s) found", Duration = 2})
+    end
+})
+
+Tabs.Teleports:AddDropdown("BaseSelect", {
+    Title = "Select Base",
+    Values = {"Scan first"},
+    Multi = false,
+    Default = 1,
+    Callback = function(Value)
+        if not Value or Value == "Scan first" then return end
+        for _, base in ipairs(AvailableBases) do
+            if base.Name == Value then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and base.Instance then
+                    hrp.CFrame = base.Instance.CFrame + Vector3.new(0, 5, 0)
+                    Fluent:Notify({Title = "Teleported", Content = base.Name .. "'s base", Duration = 2})
+                end
+                break
+            end
+        end
+    end
+})
+
+Tabs.Teleports:AddParagraph({Title = "Special Locations", Content = "Secret areas and arenas"})
+
+Tabs.Teleports:AddButton({
+    Title = "Secret Item",
+    Description = "Hidden collectible location",
+    Callback = function()
+        if TeleportToLocation("workspace.Map.Terrain:GetChildren()[24]") then
+            Fluent:Notify({Title = "Teleported", Content = "Secret Item", Duration = 2})
+        else
+            Fluent:Notify({Title = "Not Found", Content = "Secret Item", Duration = 2})
+        end
+    end
+})
+
+Tabs.Teleports:AddButton({
+    Title = "Secret Place",
+    Description = "Hidden area",
+    Callback = function()
+        if TeleportToLocation("workspace.Map:GetChildren()[22]") then
+            Fluent:Notify({Title = "Teleported", Content = "Secret Place", Duration = 2})
+        else
+            Fluent:Notify({Title = "Not Found", Content = "Secret Place", Duration = 2})
+        end
+    end
+})
+
+Tabs.Teleports:AddButton({
+    Title = "Battle Arena",
+    Description = "PvP combat zone",
+    Callback = function()
+        if TeleportToLocation("workspace.BattleArena") then
+            Fluent:Notify({Title = "Teleported", Content = "Battle Arena", Duration = 2})
+        else
+            Fluent:Notify({Title = "Not Found", Content = "Battle Arena", Duration = 2})
+        end
+    end
+})
+
+-- Misc
+
+Tabs.Misc:AddParagraph({Title = "Utilities", Content = "Additional tools and features"})
+
+Tabs.Misc:AddButton({Title = "Dex Explorer", Description = "Advanced game explorer", Callback = LoadDexExplorer})
+
+Tabs.Misc:AddButton({
+    Title = "Server Rejoin",
+    Description = "Rejoin current server",
+    Callback = function()
+        Window:Dialog({
+            Title = "Server Rejoin",
+            Content = "Rejoin this server?",
+            Buttons = {
+                {Title = "Yes", Callback = ServerRejoin},
+                {Title = "No", Callback = function() end}
+            }
+        })
+    end
+})
+
+Tabs.Misc:AddButton({
+    Title = "Server Hop",
+    Description = "Find and join a different server",
+    Callback = function()
+        Window:Dialog({
+            Title = "Server Hop",
+            Content = "Find a new server?",
+            Buttons = {
+                {Title = "Yes", Callback = function() task.spawn(ServerHop) end},
+                {Title = "No", Callback = function() end}
+            }
+        })
+    end
+})
+
+Tabs.Misc:AddButton({
+    Title = "Unload Script",
+    Description = "Remove GUI completely",
+    Callback = function()
+        Window:Dialog({
+            Title = "Unload Script",
+            Content = "Remove all features and GUI?",
+            Buttons = {
+                {Title = "Unload", Callback = function() getgenv().EPT_Unload() end},
+                {Title = "Cancel", Callback = function() end}
+            }
+        })
+    end
+})
+
+-- Settings
+
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
@@ -1341,67 +976,34 @@ SaveManager:SetFolder("EPT_Script/configs")
 InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 
--- ════════════════════════════════════════════════════════
---  UNLOAD FUNCTION
--- ════════════════════════════════════════════════════════
+-- Unload
+
 local function Unload()
     getgenv().EPT_Running = false
-    getgenv().EPT_Loaded  = false
+    getgenv().EPT_Loaded = false
 
     if NoclipEnabled then SetNoclip(false) end
     if FlyEnabled then SetFly(false) end
 
-    if ActivateInputConnection then
-        ActivateInputConnection:Disconnect()
-        ActivateInputConnection = nil
-    end
-
-    if TeleportInputConnection then
-        TeleportInputConnection:Disconnect()
-        TeleportInputConnection = nil
-    end
-
-    if NoclipKeybindConnection then
-        NoclipKeybindConnection:Disconnect()
-        NoclipKeybindConnection = nil
-    end
-
-    if FlyKeybindConnection then
-        FlyKeybindConnection:Disconnect()
-        FlyKeybindConnection = nil
-    end
+    if ActivateInputConnection then ActivateInputConnection:Disconnect(); ActivateInputConnection = nil end
+    if TeleportInputConnection then TeleportInputConnection:Disconnect(); TeleportInputConnection = nil end
+    if NoclipKeybindConnection then NoclipKeybindConnection:Disconnect(); NoclipKeybindConnection = nil end
+    if FlyKeybindConnection then FlyKeybindConnection:Disconnect(); FlyKeybindConnection = nil end
 
     pcall(function() Fluent.Unloaded = true end)
     pcall(function() Window:Destroy() end)
-
-    print("[EPT] Unloaded successfully.")
 end
 
 getgenv().EPT_Unload = Unload
 
--- ════════════════════════════════════════════════════════
---  RESPAWN HANDLER
--- ════════════════════════════════════════════════════════
-LocalPlayer.CharacterAdded:Connect(function(newChar)
+LocalPlayer.CharacterAdded:Connect(function()
     if CFloop then CFloop:Disconnect(); CFloop = nil end
     if flyNoclipConnection then flyNoclipConnection:Disconnect(); flyNoclipConnection = nil end
     FLYING = false
-    
-    if FlyEnabled then
-        task.wait(1)
-        SetFly(true)
-    end
+    if FlyEnabled then task.wait(1); SetFly(true) end
 end)
 
--- ════════════════════════════════════════════════════════
---  INIT
--- ════════════════════════════════════════════════════════
 Window:SelectTab(1)
 SaveManager:LoadAutoloadConfig()
 
-Fluent:Notify({
-    Title      = "⚡ EPT Loaded",
-    Content    = "All features ready",
-    SubContent = "RightCtrl to minimize",
-    Duration   = 4
-})
+Fluent:Notify({Title = "EPT Loaded", Content = "RightCtrl to minimize", Duration = 4})
