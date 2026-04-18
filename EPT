@@ -25,10 +25,11 @@ local InterfaceManager = loadstring(game:HttpGet(
 -- ════════════════════════════════════════════════════════
 --  SERVICES
 -- ════════════════════════════════════════════════════════
-local Players         = game:GetService("Players")
-local Workspace       = game:GetService("Workspace")
+local Players          = game:GetService("Players")
+local Workspace        = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
-local LocalPlayer     = Players.LocalPlayer
+local TeleportService  = game:GetService("TeleportService")
+local LocalPlayer      = Players.LocalPlayer
 
 -- ════════════════════════════════════════════════════════
 --  GLOBAL STATE FLAGS
@@ -37,14 +38,19 @@ getgenv().EPT_Loaded   = true
 getgenv().EPT_Running  = true
 
 -- ════════════════════════════════════════════════════════
---  LOCAL STATE (не глобальные переменные)
+--  LOCAL STATE
 -- ════════════════════════════════════════════════════════
-local TouchInterval = 0.01 -- локальная переменная для интервала
-local InputConnection = nil
-local currentKey = nil -- изначально nil — кейбинд НЕ активен
+local TouchInterval = 0.01
+local GetAllItemsRunning = false
+
+-- Keybinds
+local ActivateInputConnection = nil
+local TeleportInputConnection = nil
+local currentActivateKey = nil
+local currentTeleportKey = Enum.KeyCode.LeftControl -- default
 
 -- ════════════════════════════════════════════════════════
---  FUNCTION: ACTIVATE ALL ITEMS (keybind callback)
+--  FUNCTION: ACTIVATE ALL ITEMS
 -- ════════════════════════════════════════════════════════
 local function ActivateAllItems()
     local character = LocalPlayer.Character
@@ -73,35 +79,87 @@ local function ActivateAllItems()
 end
 
 -- ════════════════════════════════════════════════════════
---  FUNCTION: GET ALL ITEMS (firetouchinterest)
+--  FUNCTION: GET ALL ITEMS (УЛУЧШЕННАЯ ВЕРСИЯ)
 -- ════════════════════════════════════════════════════════
 local function GetAllItems()
-    local hrp = LocalPlayer.Character
-        and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local function spamTouch(part)
-        hrp.CFrame = part.CFrame
-        firetouchinterest(hrp, part, 0)
-        task.wait(TouchInterval) -- используем локальную переменную
-        firetouchinterest(hrp, part, 1)
+    if GetAllItemsRunning then
+        Fluent:Notify({
+            Title    = "⚠️ Already Running",
+            Content  = "Get All Items is already active!",
+            Duration = 3
+        })
+        return
     end
 
-    for _, part in pairs(Workspace:GetDescendants()) do
-        if part:IsA("BasePart") then
-            local n = part.Name:lower()
-            if n:match("button") or n:match("dropper")
-            or n:match("upgrade") or n:match("rebirth") then
-                spamTouch(part)
+    GetAllItemsRunning = true
+
+    task.spawn(function()
+        local humanoidRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not humanoidRootPart then
+            GetAllItemsRunning = false
+            return
+        end
+
+        local function spamTouch(part)
+            if part and getgenv().EPT_Running then
+                humanoidRootPart.CFrame = part.CFrame
+                firetouchinterest(humanoidRootPart, part, 0)
+                task.wait(TouchInterval)
+                firetouchinterest(humanoidRootPart, part, 1)
             end
         end
-    end
 
-    Fluent:Notify({
-        Title    = "📦 Get All Items",
-        Content  = "Done! All droppers and buttons touched.",
-        Duration = 4
-    })
+        local function cloneAndCollect(parent)
+            for _, obj in pairs(parent:GetDescendants()) do
+                if not getgenv().EPT_Running then break end
+                if obj:IsA("BasePart") and (obj.Name:lower():match("cash") or obj.Name:lower():match("money") or obj.Name:lower():match("drop")) then
+                    pcall(function()
+                        local clone = obj:Clone()
+                        clone.Position = humanoidRootPart.Position
+                        clone.Parent = Workspace
+                        clone.Anchored = false
+                        spamTouch(clone)
+                        clone:Destroy()
+                        task.wait(TouchInterval)
+                    end)
+                end
+            end
+        end
+
+        local function exploitInteractables()
+            for _, part in pairs(Workspace:GetDescendants()) do
+                if not getgenv().EPT_Running then break end
+                if part:IsA("BasePart") then
+                    local isTarget = part.Name:lower():match("button") or 
+                                   part.Name:lower():match("dropper") or 
+                                   part.Name:lower():match("upgrade") or 
+                                   part.Name:lower():match("rebirth")
+                    if isTarget then
+                        spamTouch(part)
+                    end
+                end
+            end
+        end
+
+        -- Основной цикл
+        cloneAndCollect(Workspace)
+        exploitInteractables()
+
+        GetAllItemsRunning = false
+
+        Fluent:Notify({
+            Title    = "📦 Get All Items",
+            Content  = "Done! All items collected.",
+            Duration = 4
+        })
+    end)
+end
+
+-- ════════════════════════════════════════════════════════
+--  FUNCTION: SERVER REJOIN
+-- ════════════════════════════════════════════════════════
+local function ServerRejoin()
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId)
 end
 
 -- ════════════════════════════════════════════════════════
@@ -111,7 +169,7 @@ local Window = Fluent:CreateWindow({
     Title       = "Elemental Powers Tycoon",
     SubTitle    = "by shxpe0x",
     TabWidth    = 160,
-    Size        = UDim2.fromOffset(480, 320),
+    Size        = UDim2.fromOffset(520, 360),
     Acrylic     = true,
     Theme       = "Dark",
     MinimizeKey = Enum.KeyCode.RightControl
@@ -119,29 +177,27 @@ local Window = Fluent:CreateWindow({
 
 local Tabs = {
     Main     = Window:AddTab({ Title = "Main",     Icon = "zap"      }),
+    Teleport = Window:AddTab({ Title = "Teleport", Icon = "mouse-pointer-click" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
 local Options = Fluent.Options
 
 -- ════════════════════════════════════════════════════════
---  ФУНКЦИЯ ДЛЯ ПЕРЕПОДКЛЮЧЕНИЯ ИНПУТА
+--  ФУНКЦИЯ ДЛЯ ПЕРЕПОДКЛЮЧЕНИЯ ACTIVATE KEYBIND
 -- ════════════════════════════════════════════════════════
-local function ReconnectInput()
-    -- Отключаем старое подключение
-    if InputConnection then
-        InputConnection:Disconnect()
-        InputConnection = nil
+local function ReconnectActivateInput()
+    if ActivateInputConnection then
+        ActivateInputConnection:Disconnect()
+        ActivateInputConnection = nil
     end
     
-    -- Если ключ не установлен — не подключаем
-    if not currentKey then return end
+    if not currentActivateKey then return end
     
-    -- Создаём новое подключение
-    InputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    ActivateInputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if not getgenv().EPT_Running then return end
-        if input.KeyCode == currentKey then
+        if input.KeyCode == currentActivateKey then
             task.spawn(function()
                 local n = ActivateAllItems()
                 Fluent:Notify({
@@ -155,58 +211,84 @@ local function ReconnectInput()
 end
 
 -- ════════════════════════════════════════════════════════
+--  ФУНКЦИЯ ДЛЯ ПЕРЕПОДКЛЮЧЕНИЯ TELEPORT KEYBIND
+-- ════════════════════════════════════════════════════════
+local Mouse = LocalPlayer:GetMouse()
+
+local function ReconnectTeleportInput()
+    if TeleportInputConnection then
+        TeleportInputConnection:Disconnect()
+        TeleportInputConnection = nil
+    end
+    
+    TeleportInputConnection = Mouse.Button1Down:Connect(function()
+        if not getgenv().EPT_Running then return end
+        if not UserInputService:IsKeyDown(currentTeleportKey) then return end
+        if not Mouse.Target then return end
+        
+        local character = LocalPlayer.Character
+        if character then
+            character:MoveTo(Mouse.Hit.p)
+            Fluent:Notify({
+                Title    = "📍 Teleported",
+                Content  = "Moved to clicked position",
+                Duration = 2
+            })
+        end
+    end)
+end
+
+-- Инициализируем teleport keybind сразу
+ReconnectTeleportInput()
+
+-- ════════════════════════════════════════════════════════
 --  MAIN TAB ELEMENTS
 -- ════════════════════════════════════════════════════════
 do
-    -- ── GET ALL ITEMS ─────────────────────────────────────
     Tabs.Main:AddButton({
         Title       = "Get All Items",
-        Description = "Touch all droppers, buttons, upgrades and rebirths",
+        Description = "Collect all droppers, cash, buttons, upgrades and rebirths",
         Callback    = function()
-            task.spawn(GetAllItems)
+            GetAllItems()
         end
     })
 
-    -- ── TOUCH INTERVAL SLIDER ─────────────────────────────
     Tabs.Main:AddSlider("TouchInterval", {
         Title       = "Touch Interval",
         Description = "Delay between firetouchinterest calls (seconds)",
         Default     = 0.01,
         Min         = 0.00,
         Max         = 1.00,
-        Rounding    = 2,
+        Rounding    = 3,
         Callback    = function(Value)
-            TouchInterval = Value -- обновляем локальную переменную
+            TouchInterval = Value
+            print("[EPT] Touch interval updated to:", Value)
         end
     })
 
-    -- ── ACTIVATION KEYBIND ────────────────────────────────
     Tabs.Main:AddKeybind("ActivateKey", {
         Title   = "Activation Keybind",
         Mode    = "Always",
-        Default = "None", -- изменено на None
-
+        Default = "None",
         Callback = function() end,
-
         ChangedCallback = function(New)
-            -- Парсим новый ключ
             local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
             
             if newKeyStr == "None" or newKeyStr == "" then
-                currentKey = nil
-                ReconnectInput() -- отключит подключение
+                currentActivateKey = nil
+                ReconnectActivateInput()
                 Fluent:Notify({
                     Title    = "⌨️ Keybind disabled",
-                    Content  = "No key assigned",
+                    Content  = "Activation key removed",
                     Duration = 3
                 })
             else
                 pcall(function()
-                    currentKey = Enum.KeyCode[newKeyStr]
-                    ReconnectInput() -- переподключаем с новым ключом
+                    currentActivateKey = Enum.KeyCode[newKeyStr]
+                    ReconnectActivateInput()
                     Fluent:Notify({
                         Title    = "⌨️ Keybind changed",
-                        Content  = "New key: " .. newKeyStr,
+                        Content  = "New activation key: " .. newKeyStr,
                         Duration = 3
                     })
                 end)
@@ -214,7 +296,29 @@ do
         end
     })
 
-    -- ── UNLOAD BUTTON ─────────────────────────────────────
+    Tabs.Main:AddButton({
+        Title       = "Server Rejoin",
+        Description = "Rejoin current server (same lobby)",
+        Callback    = function()
+            Window:Dialog({
+                Title   = "Server Rejoin",
+                Content = "Rejoin this server?",
+                Buttons = {
+                    {
+                        Title    = "Rejoin",
+                        Callback = function()
+                            ServerRejoin()
+                        end
+                    },
+                    {
+                        Title    = "Cancel",
+                        Callback = function() end
+                    }
+                }
+            })
+        end
+    })
+
     Tabs.Main:AddButton({
         Title       = "Unload Script",
         Description = "Remove GUI and disconnect all listeners",
@@ -240,6 +344,36 @@ do
 end
 
 -- ════════════════════════════════════════════════════════
+--  TELEPORT TAB ELEMENTS
+-- ════════════════════════════════════════════════════════
+do
+    Tabs.Teleport:AddParagraph({
+        Title = "Click Teleport",
+        Content = "Hold a key and click to teleport to mouse position"
+    })
+
+    Tabs.Teleport:AddKeybind("TeleportKey", {
+        Title   = "Teleport Keybind",
+        Mode    = "Always",
+        Default = "LeftControl",
+        Callback = function() end,
+        ChangedCallback = function(New)
+            local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
+            
+            pcall(function()
+                currentTeleportKey = Enum.KeyCode[newKeyStr]
+                ReconnectTeleportInput()
+                Fluent:Notify({
+                    Title    = "🖱️ Teleport key changed",
+                    Content  = newKeyStr .. " + Click to teleport",
+                    Duration = 3
+                })
+            end)
+        end
+    })
+end
+
+-- ════════════════════════════════════════════════════════
 --  SETTINGS TAB
 -- ════════════════════════════════════════════════════════
 SaveManager:SetLibrary(Fluent)
@@ -255,27 +389,28 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 --  UNLOAD FUNCTION
 -- ════════════════════════════════════════════════════════
 local function Unload()
-    -- 1. Kill the flag
     getgenv().EPT_Running = false
     getgenv().EPT_Loaded  = false
 
-    -- 2. Disconnect the input
-    if InputConnection then
-        InputConnection:Disconnect()
-        InputConnection = nil
+    if ActivateInputConnection then
+        ActivateInputConnection:Disconnect()
+        ActivateInputConnection = nil
     end
 
-    -- 3. Tell Fluent to stop
+    if TeleportInputConnection then
+        TeleportInputConnection:Disconnect()
+        TeleportInputConnection = nil
+    end
+
     pcall(function()
         Fluent.Unloaded = true
     end)
 
-    -- 4. Destroy window
     pcall(function()
         Window:Destroy()
     end)
 
-    print("[EPT] Unloaded successfully. Keybind disconnected.")
+    print("[EPT] Unloaded successfully. All keybinds disconnected.")
 end
 
 getgenv().EPT_Unload = Unload
@@ -288,7 +423,7 @@ SaveManager:LoadAutoloadConfig()
 
 Fluent:Notify({
     Title      = "⚡ Elemental Powers Tycoon",
-    Content    = "Script loaded! Set a keybind to activate items.",
+    Content    = "Script loaded! Set keybinds and enjoy.",
     SubContent = "RightCtrl — minimize | by shxpe0x",
     Duration   = 6
 })
