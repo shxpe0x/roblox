@@ -1,0 +1,270 @@
+-- ╔══════════════════════════════════════════════════════╗
+-- ║       Elemental Powers Tycoon — by shxpe0x           ║
+-- ║   Built on Fluent UI | Get Items | Keybind | Unload  ║
+-- ╚══════════════════════════════════════════════════════╝
+
+-- Prevent double-loading: unload old instance first
+if getgenv().EPT_Loaded then
+    pcall(getgenv().EPT_Unload)
+    task.wait(0.3)
+end
+
+-- ════════════════════════════════════════════════════════
+--  LOAD FLUENT UI + ADDONS
+-- ════════════════════════════════════════════════════════
+local Fluent = loadstring(game:HttpGet(
+    "https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"
+))()
+local SaveManager = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"
+))()
+local InterfaceManager = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"
+))()
+
+-- ════════════════════════════════════════════════════════
+--  SERVICES
+-- ════════════════════════════════════════════════════════
+local Players         = game:GetService("Players")
+local Workspace       = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer     = Players.LocalPlayer
+
+-- ════════════════════════════════════════════════════════
+--  GLOBAL STATE FLAGS
+-- ════════════════════════════════════════════════════════
+getgenv().EPT_Loaded   = true
+getgenv().EPT_Running  = true
+getgenv().EPT_Interval = 0.01 -- touch interval in seconds (controlled by slider)
+
+-- ════════════════════════════════════════════════════════
+--  FUNCTION: ACTIVATE ALL ITEMS (keybind callback)
+-- ════════════════════════════════════════════════════════
+local function ActivateAllItems()
+    local character = LocalPlayer.Character
+    local backpack  = LocalPlayer:FindFirstChild("Backpack")
+    local humanoid  = character and character:FindFirstChildOfClass("Humanoid")
+    if not (character and backpack and humanoid) then return 0 end
+
+    local count    = 0
+    local allTools = {}
+
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") then table.insert(allTools, tool) end
+    end
+    for _, tool in ipairs(character:GetChildren()) do
+        if tool:IsA("Tool") then table.insert(allTools, tool) end
+    end
+
+    for _, tool in ipairs(allTools) do
+        pcall(function()
+            humanoid:EquipTool(tool)
+            tool:Activate()
+            count = count + 1
+        end)
+    end
+    return count
+end
+
+-- ════════════════════════════════════════════════════════
+--  FUNCTION: GET ALL ITEMS (firetouchinterest)
+-- ════════════════════════════════════════════════════════
+local function GetAllItems()
+    local hrp = LocalPlayer.Character
+        and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local function spamTouch(part)
+        hrp.CFrame = part.CFrame
+        firetouchinterest(hrp, part, 0)
+        task.wait(getgenv().EPT_Interval) -- interval from slider
+        firetouchinterest(hrp, part, 1)
+    end
+
+    for _, part in pairs(Workspace:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local n = part.Name:lower()
+            if n:match("button") or n:match("dropper")
+            or n:match("upgrade") or n:match("rebirth") then
+                spamTouch(part)
+            end
+        end
+    end
+
+    Fluent:Notify({
+        Title    = "📦 Get All Items",
+        Content  = "Done! All droppers and buttons touched.",
+        Duration = 4
+    })
+end
+
+-- ════════════════════════════════════════════════════════
+--  CREATE WINDOW
+-- ════════════════════════════════════════════════════════
+local Window = Fluent:CreateWindow({
+    Title       = "Elemental Powers Tycoon",
+    SubTitle    = "by shxpe0x",
+    TabWidth    = 160,
+    Size        = UDim2.fromOffset(480, 320),
+    Acrylic     = true,
+    Theme       = "Dark",
+    MinimizeKey = Enum.KeyCode.RightControl
+})
+
+local Tabs = {
+    Main     = Window:AddTab({ Title = "Main",     Icon = "zap"      }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+local Options = Fluent.Options
+
+-- ════════════════════════════════════════════════════════
+--  MANUAL INPUT CONNECTION (bulletproof unload)
+-- ════════════════════════════════════════════════════════
+-- We keep our OWN connection reference so we can
+-- Disconnect() it manually on unload — 100% guaranteed.
+local InputConnection
+local currentKey = Enum.KeyCode.F -- default key
+
+InputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if not getgenv().EPT_Running then return end
+    if input.KeyCode == currentKey then
+        task.spawn(function()
+            local n = ActivateAllItems()
+            Fluent:Notify({
+                Title    = "⚡ Activated!",
+                Content  = "Items used: " .. n,
+                Duration = 2
+            })
+        end)
+    end
+end)
+
+-- ════════════════════════════════════════════════════════
+--  MAIN TAB ELEMENTS
+-- ════════════════════════════════════════════════════════
+do
+    -- ── GET ALL ITEMS ─────────────────────────────────────
+    Tabs.Main:AddButton({
+        Title       = "Get All Items",
+        Description = "Touch all droppers, buttons, upgrades and rebirths",
+        Callback    = function()
+            task.spawn(GetAllItems)
+        end
+    })
+
+    -- ── TOUCH INTERVAL SLIDER ─────────────────────────────
+    Tabs.Main:AddSlider("TouchInterval", {
+        Title       = "Touch Interval",
+        Description = "Delay between firetouchinterest calls (seconds)",
+        Default     = 0.01,
+        Min         = 0.00,
+        Max         = 1.00,
+        Rounding    = 2,
+        Callback    = function(Value)
+            getgenv().EPT_Interval = Value
+        end
+    })
+
+    -- ── ACTIVATION KEYBIND ────────────────────────────────
+    -- Fluent's AddKeybind handles the visual button in GUI.
+    -- Our manual InputConnection (above) does the real work.
+    -- ChangedCallback keeps currentKey in sync.
+    Tabs.Main:AddKeybind("ActivateKey", {
+        Title   = "Activation Keybind",
+        Mode    = "Always",
+        Default = "F",
+
+        Callback = function() end, -- handled by InputConnection
+
+        ChangedCallback = function(New)
+            -- Sync the manual connection to the new key
+            pcall(function()
+                currentKey = Enum.KeyCode[tostring(New):match("%.(%w+)$") or tostring(New)]
+            end)
+            Fluent:Notify({
+                Title    = "⌨️ Keybind changed",
+                Content  = "New key: " .. tostring(New),
+                Duration = 3
+            })
+        end
+    })
+
+    -- ── UNLOAD BUTTON ─────────────────────────────────────
+    Tabs.Main:AddButton({
+        Title       = "Unload Script",
+        Description = "Remove GUI and disconnect all listeners",
+        Callback    = function()
+            Window:Dialog({
+                Title   = "Unload Script",
+                Content = "Are you sure? Keybind and GUI will be fully removed.",
+                Buttons = {
+                    {
+                        Title    = "Unload",
+                        Callback = function()
+                            getgenv().EPT_Unload()
+                        end
+                    },
+                    {
+                        Title    = "Cancel",
+                        Callback = function() end
+                    }
+                }
+            })
+        end
+    })
+end
+
+-- ════════════════════════════════════════════════════════
+--  SETTINGS TAB
+-- ════════════════════════════════════════════════════════
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+InterfaceManager:SetFolder("EPT_Script")
+SaveManager:SetFolder("EPT_Script/configs")
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+-- ════════════════════════════════════════════════════════
+--  UNLOAD FUNCTION
+-- ════════════════════════════════════════════════════════
+local function Unload()
+    -- 1. Kill the flag — stops any future key presses
+    getgenv().EPT_Running = false
+    getgenv().EPT_Loaded  = false
+
+    -- 2. Disconnect the input manually — KEY STOPS WORKING HERE
+    pcall(function()
+        InputConnection:Disconnect()
+    end)
+
+    -- 3. Tell Fluent to stop internal tasks
+    pcall(function()
+        Fluent.Unloaded = true
+    end)
+
+    -- 4. Destroy the window (removes GUI visually)
+    pcall(function()
+        Window:Destroy()
+    end)
+
+    print("[EPT] Unloaded successfully. Keybind disconnected.")
+end
+
+getgenv().EPT_Unload = Unload
+
+-- ════════════════════════════════════════════════════════
+--  INIT
+-- ════════════════════════════════════════════════════════
+Window:SelectTab(1)
+SaveManager:LoadAutoloadConfig()
+
+Fluent:Notify({
+    Title      = "⚡ Elemental Powers Tycoon",
+    Content    = "Script loaded! Press F to activate all items.",
+    SubContent = "RightCtrl — minimize | by shxpe0x",
+    Duration   = 6
+})
