@@ -35,7 +35,13 @@ local LocalPlayer     = Players.LocalPlayer
 -- ════════════════════════════════════════════════════════
 getgenv().EPT_Loaded   = true
 getgenv().EPT_Running  = true
-getgenv().EPT_Interval = 0.01 -- touch interval in seconds (controlled by slider)
+
+-- ════════════════════════════════════════════════════════
+--  LOCAL STATE (не глобальные переменные)
+-- ════════════════════════════════════════════════════════
+local TouchInterval = 0.01 -- локальная переменная для интервала
+local InputConnection = nil
+local currentKey = nil -- изначально nil — кейбинд НЕ активен
 
 -- ════════════════════════════════════════════════════════
 --  FUNCTION: ACTIVATE ALL ITEMS (keybind callback)
@@ -77,7 +83,7 @@ local function GetAllItems()
     local function spamTouch(part)
         hrp.CFrame = part.CFrame
         firetouchinterest(hrp, part, 0)
-        task.wait(getgenv().EPT_Interval) -- interval from slider
+        task.wait(TouchInterval) -- используем локальную переменную
         firetouchinterest(hrp, part, 1)
     end
 
@@ -119,27 +125,34 @@ local Tabs = {
 local Options = Fluent.Options
 
 -- ════════════════════════════════════════════════════════
---  MANUAL INPUT CONNECTION (bulletproof unload)
+--  ФУНКЦИЯ ДЛЯ ПЕРЕПОДКЛЮЧЕНИЯ ИНПУТА
 -- ════════════════════════════════════════════════════════
--- We keep our OWN connection reference so we can
--- Disconnect() it manually on unload — 100% guaranteed.
-local InputConnection
-local currentKey = Enum.KeyCode.F -- default key
-
-InputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if not getgenv().EPT_Running then return end
-    if input.KeyCode == currentKey then
-        task.spawn(function()
-            local n = ActivateAllItems()
-            Fluent:Notify({
-                Title    = "⚡ Activated!",
-                Content  = "Items used: " .. n,
-                Duration = 2
-            })
-        end)
+local function ReconnectInput()
+    -- Отключаем старое подключение
+    if InputConnection then
+        InputConnection:Disconnect()
+        InputConnection = nil
     end
-end)
+    
+    -- Если ключ не установлен — не подключаем
+    if not currentKey then return end
+    
+    -- Создаём новое подключение
+    InputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if not getgenv().EPT_Running then return end
+        if input.KeyCode == currentKey then
+            task.spawn(function()
+                local n = ActivateAllItems()
+                Fluent:Notify({
+                    Title    = "⚡ Activated!",
+                    Content  = "Items used: " .. n,
+                    Duration = 2
+                })
+            end)
+        end
+    end)
+end
 
 -- ════════════════════════════════════════════════════════
 --  MAIN TAB ELEMENTS
@@ -163,31 +176,41 @@ do
         Max         = 1.00,
         Rounding    = 2,
         Callback    = function(Value)
-            getgenv().EPT_Interval = Value
+            TouchInterval = Value -- обновляем локальную переменную
         end
     })
 
     -- ── ACTIVATION KEYBIND ────────────────────────────────
-    -- Fluent's AddKeybind handles the visual button in GUI.
-    -- Our manual InputConnection (above) does the real work.
-    -- ChangedCallback keeps currentKey in sync.
     Tabs.Main:AddKeybind("ActivateKey", {
         Title   = "Activation Keybind",
         Mode    = "Always",
-        Default = "F",
+        Default = "None", -- изменено на None
 
-        Callback = function() end, -- handled by InputConnection
+        Callback = function() end,
 
         ChangedCallback = function(New)
-            -- Sync the manual connection to the new key
-            pcall(function()
-                currentKey = Enum.KeyCode[tostring(New):match("%.(%w+)$") or tostring(New)]
-            end)
-            Fluent:Notify({
-                Title    = "⌨️ Keybind changed",
-                Content  = "New key: " .. tostring(New),
-                Duration = 3
-            })
+            -- Парсим новый ключ
+            local newKeyStr = tostring(New):match("%.(%w+)$") or tostring(New)
+            
+            if newKeyStr == "None" or newKeyStr == "" then
+                currentKey = nil
+                ReconnectInput() -- отключит подключение
+                Fluent:Notify({
+                    Title    = "⌨️ Keybind disabled",
+                    Content  = "No key assigned",
+                    Duration = 3
+                })
+            else
+                pcall(function()
+                    currentKey = Enum.KeyCode[newKeyStr]
+                    ReconnectInput() -- переподключаем с новым ключом
+                    Fluent:Notify({
+                        Title    = "⌨️ Keybind changed",
+                        Content  = "New key: " .. newKeyStr,
+                        Duration = 3
+                    })
+                end)
+            end
         end
     })
 
@@ -232,21 +255,22 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 --  UNLOAD FUNCTION
 -- ════════════════════════════════════════════════════════
 local function Unload()
-    -- 1. Kill the flag — stops any future key presses
+    -- 1. Kill the flag
     getgenv().EPT_Running = false
     getgenv().EPT_Loaded  = false
 
-    -- 2. Disconnect the input manually — KEY STOPS WORKING HERE
-    pcall(function()
+    -- 2. Disconnect the input
+    if InputConnection then
         InputConnection:Disconnect()
-    end)
+        InputConnection = nil
+    end
 
-    -- 3. Tell Fluent to stop internal tasks
+    -- 3. Tell Fluent to stop
     pcall(function()
         Fluent.Unloaded = true
     end)
 
-    -- 4. Destroy the window (removes GUI visually)
+    -- 4. Destroy window
     pcall(function()
         Window:Destroy()
     end)
@@ -264,7 +288,7 @@ SaveManager:LoadAutoloadConfig()
 
 Fluent:Notify({
     Title      = "⚡ Elemental Powers Tycoon",
-    Content    = "Script loaded! Press F to activate all items.",
+    Content    = "Script loaded! Set a keybind to activate items.",
     SubContent = "RightCtrl — minimize | by shxpe0x",
     Duration   = 6
 })
