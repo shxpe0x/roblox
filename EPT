@@ -66,14 +66,16 @@ local visitedServers = {}
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent", 10)
 local lastTeleportTick = 0
 
+local function ShouldAbort()
+    return not getgenv().EPT_Running or not (State.AutoTycoon or State.AutoLoot or State.AutoRebirth)
+end
+
 local function GetHRP()
     local char = LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if hrp and hum and hum.Health > 0 then
-            return hrp
-        end
+        if hrp and hum and hum.Health > 0 then return hrp end
     end
     return nil
 end
@@ -85,9 +87,7 @@ end
 local function SafeTeleport(hrp, targetCFrame)
     if not hrp then return end
     local now = tick()
-    if now - lastTeleportTick < 0.2 then
-        task.wait(0.2)
-    end
+    if now - lastTeleportTick < 0.2 then task.wait(0.2) end
     lastTeleportTick = tick()
     
     local wasAnchored = hrp.Anchored
@@ -96,15 +96,13 @@ local function SafeTeleport(hrp, targetCFrame)
     task.wait(0.05)
     if not wasAnchored then hrp.Anchored = false end
     local humanoid = hrp.Parent and hrp.Parent:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-    end
+    if humanoid then pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end) end
 end
 
 local function SmartWait(duration)
     local steps = math.floor(duration / 0.1)
     for i = 1, steps do
-        if State.BossMoneyInterrupt then return true end
+        if State.BossMoneyInterrupt or ShouldAbort() then return true end
         task.wait(0.1)
     end
     return false
@@ -118,13 +116,7 @@ end)
 
 local function SetAntiAFK(state)
     if state then
-        if not AntiAFKConnection then
-            AntiAFKConnection = LocalPlayer.Idled:Connect(function()
-                VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-                task.wait(1)
-                VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-            end)
-        end
+        if not AntiAFKConnection then AntiAFKConnection = LocalPlayer.Idled:Connect(function() VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame) task.wait(1) VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame) end) end
     else
         if AntiAFKConnection then AntiAFKConnection:Disconnect(); AntiAFKConnection = nil end
     end
@@ -133,248 +125,83 @@ end
 local function SetNoclip(state)
     State.NoclipEnabled = state
     if State.NoclipEnabled then
-        if not NoclipConnection then
-            NoclipConnection = RunService.Stepped:Connect(function()
-                if State.NoclipEnabled then
-                    local char = LocalPlayer.Character
-                    if char then
-                        for _, part in pairs(char:GetDescendants()) do
-                            if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
-                        end
-                    end
-                end
-            end)
-        end
+        if not NoclipConnection then NoclipConnection = RunService.Stepped:Connect(function() if State.NoclipEnabled then local c = LocalPlayer.Character if c then for _, p in pairs(c:GetDescendants()) do if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end end end end end) end
     else
         if NoclipConnection then NoclipConnection:Disconnect(); NoclipConnection = nil end
     end
 end
 
-local function FlyNoclipLoop()
-    local char = LocalPlayer.Character
-    if char then
-        for _, child in pairs(char:GetDescendants()) do
-            if child:IsA("BasePart") and child.CanCollide then child.CanCollide = false end
-        end
-    end
-end
-
-local function startCFrameFlyLoop()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("Head") then return end
-    FLYING = true
-    local Head = char.Head
-    Head.Anchored = true
-    
-    CFloop = RunService.Heartbeat:Connect(function(deltaTime)
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-        local moveDirection = humanoid.MoveDirection * (flySpeed * deltaTime)
-        local headCFrame = Head.CFrame
-        local cameraCFrame = workspace.CurrentCamera.CFrame
-        local cameraOffset = headCFrame:ToObjectSpace(cameraCFrame).Position
-        cameraCFrame = cameraCFrame * CFrame.new(-cameraOffset.X, -cameraOffset.Y, -cameraOffset.Z + 1)
-        local cameraPosition = cameraCFrame.Position
-        local headPosition = headCFrame.Position
-        local objectSpaceVelocity = CFrame.new(cameraPosition, Vector3.new(headPosition.X, cameraPosition.Y, headPosition.Z)):VectorToObjectSpace(moveDirection)
-        Head.CFrame = CFrame.new(headPosition) * (cameraCFrame - cameraPosition) * CFrame.new(objectSpaceVelocity)
-    end)
-end
-
-local function startBodyMoverFlyLoop()
-    local char = LocalPlayer.Character
-    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-    if not char or not rootPart or not humanoid then return end
-    FLYING = true
-    flyNoclipConnection = RunService.Heartbeat:Connect(FlyNoclipLoop)
-    task.spawn(function()
-        bodyGyro = Instance.new('BodyGyro', rootPart)
-        bodyGyro.P = 9e4; bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9); bodyGyro.CFrame = rootPart.CFrame
-        bodyVelocity = Instance.new('BodyVelocity', rootPart)
-        bodyVelocity.Velocity = Vector3.new(0,0,0); bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-        humanoid.PlatformStand = true
-        repeat
-            task.wait()
-            local camera = workspace.CurrentCamera
-            local moveVector = ((camera.CFrame.LookVector * (CONTROL.F + CONTROL.B)) + ((camera.CFrame * CFrame.new((CONTROL.L + CONTROL.R), (CONTROL.Q + CONTROL.E) * 0.2, 0).p) - camera.CFrame.p))
-            bodyVelocity.Velocity = moveVector.Magnitude > 0 and moveVector.Unit * flySpeed or Vector3.new(0,0,0)
-            bodyGyro.CFrame = camera.CFrame
-        until not FLYING or not rootPart.Parent
-        if bodyGyro then bodyGyro:Destroy() end
-        if bodyVelocity then bodyVelocity:Destroy() end
-        if humanoid and humanoid.Parent then humanoid.PlatformStand = false end
-        CONTROL = {F=0, B=0, L=0, R=0, Q=0, E=0}
-    end)
-end
+local function FlyNoclipLoop() local c = LocalPlayer.Character if c then for _, ch in pairs(c:GetDescendants()) do if ch:IsA("BasePart") and ch.CanCollide then ch.CanCollide = false end end end end
+local function startCFrameFlyLoop() local c = LocalPlayer.Character if not c or not c:FindFirstChild("Head") then return end FLYING = true local H = c.Head H.Anchored = true CFloop = RunService.Heartbeat:Connect(function(d) local h = c:FindFirstChildOfClass("Humanoid") if not h then return end local m = h.MoveDirection * (flySpeed * d) local hc = H.CFrame local cc = workspace.CurrentCamera.CFrame local co = hc:ToObjectSpace(cc).Position cc = cc * CFrame.new(-co.X, -co.Y, -co.Z + 1) local cp = cc.Position local hp = hc.Position local ov = CFrame.new(cp, Vector3.new(hp.X, cp.Y, hp.Z)):VectorToObjectSpace(m) H.CFrame = CFrame.new(hp) * (cc - cp) * CFrame.new(ov) end) end
+local function startBodyMoverFlyLoop() local c = LocalPlayer.Character local r = c and c:FindFirstChild("HumanoidRootPart") local h = c and c:FindFirstChildOfClass("Humanoid") if not c or not r or not h then return end FLYING = true flyNoclipConnection = RunService.Heartbeat:Connect(FlyNoclipLoop) task.spawn(function() bodyGyro = Instance.new('BodyGyro', r) bodyGyro.P = 9e4; bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9); bodyGyro.CFrame = r.CFrame bodyVelocity = Instance.new('BodyVelocity', r) bodyVelocity.Velocity = Vector3.new(0,0,0); bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9) h.PlatformStand = true repeat task.wait() local cam = workspace.CurrentCamera local mv = ((cam.CFrame.LookVector * (CONTROL.F + CONTROL.B)) + ((cam.CFrame * CFrame.new((CONTROL.L + CONTROL.R), (CONTROL.Q + CONTROL.E) * 0.2, 0).p) - cam.CFrame.p)) bodyVelocity.Velocity = mv.Magnitude > 0 and mv.Unit * flySpeed or Vector3.new(0,0,0) bodyGyro.CFrame = cam.CFrame until not FLYING or not r.Parent if bodyGyro then bodyGyro:Destroy() end if bodyVelocity then bodyVelocity:Destroy() end if h and h.Parent then h.PlatformStand = false end CONTROL = {F=0, B=0, L=0, R=0, Q=0, E=0} end) end
 
 local function SetFly(state)
-    State.FlyEnabled = state
-    local char = LocalPlayer.Character
-    if not char or not char.Parent then return end
-    if State.FlyEnabled then
-        for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then part.Transparency = flyTransparency end end
-        if useCFrameFly then
-            for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = false end end
-            startCFrameFlyLoop()
-        else startBodyMoverFlyLoop() end
-    else
-        FLYING = false
-        if CFloop then CFloop:Disconnect(); CFloop = nil end
-        if flyNoclipConnection then flyNoclipConnection:Disconnect(); flyNoclipConnection = nil end
-        if char and char:FindFirstChild("Head") then char.Head.Anchored = false end
-        for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = true; if part.Name ~= "HumanoidRootPart" then part.Transparency = 0 end end end
-    end
+    State.FlyEnabled = state local c = LocalPlayer.Character if not c or not c.Parent then return end
+    if State.FlyEnabled then for _, p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then p.Transparency = flyTransparency end end if useCFrameFly then for _, p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end startCFrameFlyLoop() else startBodyMoverFlyLoop() end
+    else FLYING = false if CFloop then CFloop:Disconnect(); CFloop = nil end if flyNoclipConnection then flyNoclipConnection:Disconnect(); flyNoclipConnection = nil end if c and c:FindFirstChild("Head") then c.Head.Anchored = false end for _, p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true; if p.Name ~= "HumanoidRootPart" then p.Transparency = 0 end end end end
 end
 
 local keyMap = {[Enum.KeyCode.W]="F",[Enum.KeyCode.S]="B",[Enum.KeyCode.A]="L",[Enum.KeyCode.D]="R",[Enum.KeyCode.Q]="Q",[Enum.KeyCode.E]="E"}
 local valueMap = {[Enum.KeyCode.W]=1,[Enum.KeyCode.S]=-1,[Enum.KeyCode.A]=-1,[Enum.KeyCode.D]=1,[Enum.KeyCode.Q]=-1,[Enum.KeyCode.E]=1}
-UserInputService.InputBegan:Connect(function(input, gpe) if gpe or not keyMap[input.KeyCode] then return end if FLYING then CONTROL[keyMap[input.KeyCode]] = valueMap[input.KeyCode] end end)
-UserInputService.InputEnded:Connect(function(input) if keyMap[input.KeyCode] then CONTROL[keyMap[input.KeyCode]] = 0 end end)
+UserInputService.InputBegan:Connect(function(i, g) if g or not keyMap[i.KeyCode] then return end if FLYING then CONTROL[keyMap[i.KeyCode]] = valueMap[i.KeyCode] end end)
+UserInputService.InputEnded:Connect(function(i) if keyMap[i.KeyCode] then CONTROL[keyMap[i.KeyCode]] = 0 end end)
 
-local function ActivateAllItems()
-    local char = LocalPlayer.Character
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-    if not (char and backpack and humanoid) then return 0 end
-    local count = 0
-    for _, tool in ipairs(backpack:GetChildren()) do if tool:IsA("Tool") then pcall(function() humanoid:EquipTool(tool); task.wait(0.05); tool:Activate(); count = count + 1 end) end end
-    for _, tool in ipairs(char:GetChildren()) do if tool:IsA("Tool") then pcall(function() tool:Activate(); count = count + 1 end) end end
-    return count
-end
-
-local function DeleteHeldItem()
-    local char = LocalPlayer.Character
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if not char then return end
-    local heldTool = nil
-    for _, item in ipairs(char:GetChildren()) do if item:IsA("Tool") then heldTool = item; break end end
-    if heldTool then
-        local toolName = heldTool.Name; heldTool:Destroy()
-        if backpack then for _, item in ipairs(backpack:GetChildren()) do if item:IsA("Tool") and item.Name == toolName then item:Destroy() end end end
-        Fluent:Notify({Title = "Deleted", Content = toolName .. " removed", Duration = 2})
-    else Fluent:Notify({Title = "Nothing Held", Duration = 2}) end
-end
+local function ActivateAllItems() local c = LocalPlayer.Character local b = LocalPlayer:FindFirstChild("Backpack") local h = c and c:FindFirstChildOfClass("Humanoid") if not (c and b and h) then return 0 end local n = 0 for _, t in ipairs(b:GetChildren()) do if t:IsA("Tool") then pcall(function() h:EquipTool(t); task.wait(0.05); t:Activate(); n = n + 1 end) end end for _, t in ipairs(c:GetChildren()) do if t:IsA("Tool") then pcall(function() t:Activate(); n = n + 1 end) end end return n end
+local function DeleteHeldItem() local c = LocalPlayer.Character local b = LocalPlayer:FindFirstChild("Backpack") if not c then return end local t = nil for _, i in ipairs(c:GetChildren()) do if i:IsA("Tool") then t = i; break end end if t then local n = t.Name; t:Destroy() if b then for _, i in ipairs(b:GetChildren()) do if i:IsA("Tool") and i.Name == n then i:Destroy() end end end Fluent:Notify({Title = "Deleted", Content = n .. " removed", Duration = 2}) else Fluent:Notify({Title = "Nothing Held", Duration = 2}) end end
 
 local function GrabBossMoney()
-    local hrp = GetHRP()
-    if not hrp then return end
+    local hrp = GetHRP() if not hrp then return end
     local moneyParts = {}
-    pcall(function()
-        for _, v in next, getnilinstances() do if v.ClassName == "Part" and (v.Name == "Dollar" or v.Name == "Money" or v.Name == "Cash") then table.insert(moneyParts, v) end end
-    end)
+    pcall(function() for _, v in next, getnilinstances() do if v.ClassName == "Part" and (v.Name == "Dollar" or v.Name == "Money" or v.Name == "Cash") then table.insert(moneyParts, v) end end end)
     for _, v in ipairs(Workspace:GetDescendants()) do if v:IsA("BasePart") and (v.Name == "Dollar" or v.Name == "Money" or v.Name == "Cash") then table.insert(moneyParts, v) end end
     for _, part in ipairs(moneyParts) do
+        if ShouldAbort() then return end
         if part and part.Parent then SafeTeleport(hrp, part.CFrame); task.wait(0.05) end
     end
     State.BossMoneyInterrupt = false
 end
 
 local function RunLootPhase()
-    local hrp = GetHRP()
-    if not hrp then return end
+    local hrp = GetHRP() if not hrp then return end
     GrabBossMoney()
     for _, obj in ipairs(Workspace:GetChildren()) do
-        if State.BossMoneyInterrupt then return end
+        if State.BossMoneyInterrupt or ShouldAbort() then return end
         if obj.Name == "BalloonCrate" then
             local target = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
             if target then 
-                SafeTeleport(hrp, target.CFrame + Vector3.new(0, 3, 0))
-                HumanizeWait(0.1, 0.2)
+                SafeTeleport(hrp, target.CFrame + Vector3.new(0, 3, 0)); HumanizeWait(0.1, 0.2)
                 for i = 1, 33 do
-                    if State.BossMoneyInterrupt then return end
+                    if State.BossMoneyInterrupt or ShouldAbort() then return end
                     pcall(function() local p = obj:FindFirstChildWhichIsA("ProximityPrompt", true) if p then p:InputHoldBegin() task.wait(0.05) p:InputHoldEnd() end end)
                     task.wait(0.05)
                 end
             end
         end
     end
-    local treasureFolder = Workspace:FindFirstChild("Treasure")
-    if treasureFolder then
-        local chestsFolder = treasureFolder:FindFirstChild("Chests")
-        if chestsFolder then
-            for _, chest in ipairs(chestsFolder:GetChildren()) do
-                if State.BossMoneyInterrupt then return end
-                if chest:IsA("BasePart") then
-                    SafeTeleport(hrp, chest.CFrame + Vector3.new(0, 3, 0))
-                    HumanizeWait(0.1, 0.2)
-                    for i = 1, 33 do
-                        if State.BossMoneyInterrupt then return end
-                        pcall(function()
-                            local p = chest:FindFirstChildWhichIsA("ProximityPrompt", true)
-                            if p then p:InputHoldBegin() task.wait(0.05) p:InputHoldEnd()
-                            else firetouchinterest(hrp, chest, 0) task.wait(0.05) firetouchinterest(hrp, chest, 1) end
-                        end)
-                        task.wait(0.05)
-                    end
-                end
-            end
-        end
-    end
+    local tf = Workspace:FindFirstChild("Treasure") if tf then local cf = tf:FindFirstChild("Chests") if cf then for _, ch in ipairs(cf:GetChildren()) do if State.BossMoneyInterrupt or ShouldAbort() then return end if ch:IsA("BasePart") then SafeTeleport(hrp, ch.CFrame + Vector3.new(0, 3, 0)); HumanizeWait(0.1, 0.2) for i = 1, 33 do if State.BossMoneyInterrupt or ShouldAbort() then return end pcall(function() local p = ch:FindFirstChildWhichIsA("ProximityPrompt", true) if p then p:InputHoldBegin() task.wait(0.05) p:InputHoldEnd() else firetouchinterest(hrp, ch, 0) task.wait(0.05) firetouchinterest(hrp, ch, 1) end end) task.wait(0.05) end end end end end
 end
 
-local function HasGreenButtons()
-    local tycoon = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name)
-    if not tycoon then return false end
-    local buttonsFolder = tycoon:FindFirstChild("Buttons")
-    if not buttonsFolder then return false end
-    for _, btnFolder in ipairs(buttonsFolder:GetChildren()) do
-        local btn = btnFolder:FindFirstChild("Button")
-        if btn and btn:IsA("BasePart") and btn.Color == Color3.fromRGB(0, 127, 0) then return true end
-    end
-    return false
-end
+local function HasGreenButtons() local t = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name) if not t then return false end local b = t:FindFirstChild("Buttons") if not b then return false end for _, f in ipairs(b:GetChildren()) do local btn = f:FindFirstChild("Button") if btn and btn:IsA("BasePart") and btn.Color == Color3.fromRGB(0, 127, 0) then return true end end return false end
 
 local function BuyGreenButtons()
-    local hrp = GetHRP()
-    local tycoon = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name)
-    if not (hrp and tycoon) then return end
-    local buttonsFolder = tycoon:FindFirstChild("Buttons")
-    if buttonsFolder then
-        for _, btnFolder in ipairs(buttonsFolder:GetChildren()) do
-            if State.BossMoneyInterrupt then return end
-            local btn = btnFolder:FindFirstChild("Button")
-            if btn and btn:IsA("BasePart") and btn.Color == Color3.fromRGB(0, 127, 0) then
-                SafeTeleport(hrp, btn.CFrame + Vector3.new(0, 3, 0))
-                HumanizeWait(0.05, 0.15)
-                firetouchinterest(hrp, btn, 0)
-                task.wait(0.05)
-                firetouchinterest(hrp, btn, 1)
-                task.wait(0.2)
-            end
-        end
-    end
+    local hrp = GetHRP() local t = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name) if not (hrp and t) then return end
+    local b = t:FindFirstChild("Buttons")
+    if b then for _, f in ipairs(b:GetChildren()) do if State.BossMoneyInterrupt or ShouldAbort() then return end local btn = f:FindFirstChild("Button") if btn and btn:IsA("BasePart") and btn.Color == Color3.fromRGB(0, 127, 0) then SafeTeleport(hrp, btn.CFrame + Vector3.new(0, 3, 0)); HumanizeWait(0.05, 0.15) firetouchinterest(hrp, btn, 0); task.wait(0.05); firetouchinterest(hrp, btn, 1); task.wait(0.2) end end end
 end
 
 local function StandOnCollector()
-    local hrp = GetHRP()
-    local tycoon = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name)
-    if hrp and tycoon then
-        local collectPart = tycoon:FindFirstChild("Auxiliary") and tycoon.Auxiliary:FindFirstChild("Collector") and tycoon.Auxiliary.Collector:FindFirstChild("Collect")
-        if collectPart then 
-            SafeTeleport(hrp, collectPart.CFrame + Vector3.new(0, 3, 0))
-            SmartWait(10)
-        end
-    end
+    local hrp = GetHRP() local t = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name) if hrp and t then local c = t:FindFirstChild("Auxiliary") and t.Auxiliary:FindFirstChild("Collector") and t.Auxiliary.Collector:FindFirstChild("Collect") if c then SafeTeleport(hrp, c.CFrame + Vector3.new(0, 3, 0)); SmartWait(10) end end
 end
 
 local function CheckRebirth()
-    local hrp = GetHRP()
-    local tycoon = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name)
-    if hrp and tycoon then
-        local rebirthBtn = tycoon:FindFirstChild("Auxiliary") and tycoon.Auxiliary:FindFirstChild("Rebirth") and tycoon.Auxiliary.Rebirth:FindFirstChild("Button")
-        if rebirthBtn and rebirthBtn:IsA("BasePart") then
-            SafeTeleport(hrp, rebirthBtn.CFrame + Vector3.new(0, 3, 0))
-            task.wait(0.5)
-            pcall(function()
-                local prompt = rebirthBtn:FindFirstChildWhichIsA("ProximityPrompt", true)
-                if prompt then prompt:InputHoldBegin() task.wait(10) prompt:InputHoldEnd()
-                else firetouchinterest(hrp, rebirthBtn, 0) task.wait(0.05) firetouchinterest(hrp, rebirthBtn, 1) end
-            end)
+    local hrp = GetHRP() local t = Workspace:FindFirstChild("Tycoons") and Workspace.Tycoons:FindFirstChild(LocalPlayer.Name)
+    if hrp and t then
+        local rb = t:FindFirstChild("Auxiliary") and t.Auxiliary:FindFirstChild("Rebirth") and t.Auxiliary.Rebirth:FindFirstChild("Button")
+        if rb and rb:IsA("BasePart") then
+            SafeTeleport(hrp, rb.CFrame + Vector3.new(0, 3, 0)); task.wait(0.5)
+            pcall(function() local p = rb:FindFirstChildWhichIsA("ProximityPrompt", true) if p then p:InputHoldBegin() task.wait(10) p:InputHoldEnd() else firetouchinterest(hrp, rb, 0) task.wait(0.05) firetouchinterest(hrp, rb, 1) end end)
             State.AutoTycoon = false; State.AutoLoot = false; State.AutoRebirth = false
-            pcall(function() Options.AutoTycoonToggle:SetValue(false) end)
-            pcall(function() Options.AutoLootToggle:SetValue(false) end)
-            pcall(function() Options.AutoRebirthToggle:SetValue(false) end)
+            pcall(function() Options.AutoTycoonToggle:SetValue(false) end) pcall(function() Options.AutoLootToggle:SetValue(false) end) pcall(function() Options.AutoRebirthToggle:SetValue(false) end)
             Fluent:Notify({Title = "Rebirthed!", Content = "Loops stopped", Duration = 5})
             return true
         end
@@ -390,30 +217,15 @@ local function MainFarmLoop()
         while State.AutoTycoon or State.AutoLoot or State.AutoRebirth do
             if not getgenv().EPT_Running then break end
             
-            if not GetHRP() then
-                task.wait(2)
-                continue
-            end
+            if not GetHRP() then task.wait(2); continue end
             
-            if State.AutoRebirth then
-                local rebirthed = CheckRebirth()
-                if rebirthed then break end
-            end
+            if State.AutoRebirth then local r = CheckRebirth() if r then break end end
             
             if State.BossMoneyInterrupt then
                 GrabBossMoney()
             else
-                if State.AutoTycoon then
-                    if HasGreenButtons() then
-                        BuyGreenButtons()
-                    else
-                        StandOnCollector()
-                    end
-                end
-                
-                if State.AutoLoot then
-                    RunLootPhase()
-                end
+                if State.AutoTycoon then if HasGreenButtons() then BuyGreenButtons() else StandOnCollector() end end
+                if State.AutoLoot then RunLootPhase() end
             end
             
             task.wait(1.5)
@@ -423,65 +235,18 @@ local function MainFarmLoop()
     end)
 end
 
-local function CollectAllLootOnce()
-    local hrp = GetHRP()
-    if not hrp then return end
-    local startPos = hrp.CFrame
-    RunLootPhase()
-    SafeTeleport(hrp, startPos)
-    Fluent:Notify({Title = "Loot Collected", Duration = 3})
-end
-
+local function CollectAllLootOnce() local h = GetHRP() if not h then return end local s = h.CFrame RunLootPhase() SafeTeleport(h, s) Fluent:Notify({Title = "Loot Collected", Duration = 3}) end
 local function ServerRejoin() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId) end
-local function ServerHop()
-    local PlaceID = game.PlaceId; local foundAnything = ""; local isHopping = true
-    visitedServers = {}; table.insert(visitedServers, game.JobId)
-    Fluent:Notify({Title = "Server Hop", Duration = 3})
-    task.spawn(function()
-        while isHopping do
-            pcall(function()
-                local Site = HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/'..PlaceID..'/servers/Public?sortOrder=Asc&limit=100'..(foundAnything ~= "" and '&cursor='..foundAnything or "")))
-                foundAnything = (Site.nextPageCursor and Site.nextPageCursor ~= "null") and Site.nextPageCursor or ""
-                for _, v in pairs(Site.data) do
-                    if tonumber(v.maxPlayers) > tonumber(v.playing) then
-                        local ID = tostring(v.id); local isVisited = false
-                        for _, vis in ipairs(visitedServers) do if vis == ID then isVisited = true; break end end
-                        if not isVisited then table.insert(visitedServers, ID); TeleportService:TeleportToPlaceInstance(PlaceID, ID, LocalPlayer); isHopping = false; break end
-                    end
-                end
-            end)
-            if isHopping then task.wait(1) end
-        end
-    end)
-end
+local function ServerHop() local P = game.PlaceId; local f = ""; local h = true visitedServers = {}; table.insert(visitedServers, game.JobId) Fluent:Notify({Title = "Server Hop", Duration = 3}) task.spawn(function() while h do pcall(function() local S = HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/'..P..'/servers/Public?sortOrder=Asc&limit=100'..(f~="" and '&cursor='..f or ""))) f = (S.nextPageCursor and S.nextPageCursor ~= "null") and S.nextPageCursor or "" for _, v in pairs(S.data) do if tonumber(v.maxPlayers)>tonumber(v.playing) then local I = tostring(v.id); local vis = false for _, vr in ipairs(visitedServers) do if vr==I then vis=true;break end end if not vis then table.insert(visitedServers, I); TeleportService:TeleportToPlaceInstance(P, I, LocalPlayer); h=false;break end end end end) if h then task.wait(1) end end end) end
 local function LoadDexExplorer() pcall(function() loadstring(game:HttpGet("https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua"))(); Fluent:Notify({Title = "Dex Loaded", Duration = 2}) end) end
 local function LoadInfiniteYield() pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))() end) end
 
 local function GetPlayerTeam(p) return p.Team and p.Team.Name or "No Team" end
-local function CheckPadExists(pn, pp)
-    local t = Workspace:FindFirstChild("Tycoons"); if not t then return false, nil end
-    local pt = t:FindFirstChild(pn); if not pt then return false, nil end
-    local a = pt:FindFirstChild("Assets"); if not a then return false, nil end
-    local current = a
-    for _, p in ipairs(string.split(pp, ".")) do current = current:FindFirstChild(p); if not current then return false, nil end end
-    if current:IsA("BasePart") then return true, current end
-    return false, nil
-end
-local function ScanAllPlayers()
-    local results = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        local playerData = {Player = player, DisplayName = player.Name, Team = GetPlayerTeam(player), Pads = {}}
-        for _, pt in ipairs(PadTypes) do local exists, instance = CheckPadExists(player.Name, pt.Path) if exists then table.insert(playerData.Pads, {Type = pt.Name, Instance = instance}) end end
-        if #playerData.Pads > 0 then table.insert(results, playerData) end
-    end
-    return results
-end
-local function TeleportToPad(instance) local hrp = GetHRP() if hrp and instance then SafeTeleport(hrp, instance.CFrame + Vector3.new(0,3,0)); return true end return false end
-local function ScanBases()
-    AvailableBases = {}; local t = Workspace:FindFirstChild("Tycoons") if not t then return end
-    for _, obj in ipairs(t:GetChildren()) do if obj.Name == "Claim" or not obj:IsA("Model") then continue end local aux = obj:FindFirstChild("Auxiliary") if aux then local floor = aux:FindFirstChild("Floor") if floor then local part = floor:FindFirstChild("Part") if part and part:IsA("BasePart") then table.insert(AvailableBases, {Name = obj.Name, Instance = part}) end end end end
-end
-local function TeleportToLocation(path, offset) local hrp = GetHRP() if not hrp then return false end local success, target = pcall(function() return loadstring("return " .. path)() end) if success and target and target:IsA("BasePart") then SafeTeleport(hrp, target.CFrame + (offset or Vector3.new(0,5,0))); return true end return false end
+local function CheckPadExists(pn, pp) local t = Workspace:FindFirstChild("Tycoons"); if not t then return false, nil end local pt = t:FindFirstChild(pn); if not pt then return false, nil end local a = pt:FindFirstChild("Assets"); if not a then return false, nil end local c = a for _, p in ipairs(string.split(pp, ".")) do c = c:FindFirstChild(p); if not c then return false, nil end end if c:IsA("BasePart") then return true, c end; return false, nil end
+local function ScanAllPlayers() local r = {} for _, p in ipairs(Players:GetPlayers()) do local d = {Player=p, DisplayName=p.Name, Team=GetPlayerTeam(p), Pads={}} for _, pt in ipairs(PadTypes) do local e, pi = CheckPadExists(p.Name, pt.Path) if e then table.insert(d.Pads, {Type=pt.Name, Instance=pi}) end end if #d.Pads>0 then table.insert(r, d) end end return r end
+local function TeleportToPad(i) local h = GetHRP() if h and i then SafeTeleport(h, i.CFrame + Vector3.new(0,3,0)); return true end return false end
+local function ScanBases() AvailableBases = {}; local t = Workspace:FindFirstChild("Tycoons") if not t then return end for _, o in ipairs(t:GetChildren()) do if o.Name=="Claim" or not o:IsA("Model") then continue end local a = o:FindFirstChild("Auxiliary") if a then local f = a:FindFirstChild("Floor") if f then local p = f:FindFirstChild("Part") if p and p:IsA("BasePart") then table.insert(AvailableBases, {Name=o.Name, Instance=p}) end end end end end
+local function TeleportToLocation(path, offset) local h = GetHRP() if not h then return false end local s, t = pcall(function() return loadstring("return " .. path)() end) if s and t and t:IsA("BasePart") then SafeTeleport(h, t.CFrame + (offset or Vector3.new(0,5,0))); return true end return false end
 
 local Window = Fluent:CreateWindow({Title = "Elemental Powers Tycoon", SubTitle = "by shxpe0x", TabWidth = 160, Size = UDim2.fromOffset(560, 420), Acrylic = true, Theme = "Dark", MinimizeKey = Enum.KeyCode.RightControl})
 local Tabs = {
@@ -495,30 +260,11 @@ local Tabs = {
 }
 local Options = Fluent.Options
 
-local function ReconnectActivateInput()
-    if ActivateInputConnection then ActivateInputConnection:Disconnect(); ActivateInputConnection = nil end
-    if not currentActivateKey or not State.UseAllItemsEnabled then return end
-    ActivateInputConnection = UserInputService.InputBegan:Connect(function(input, gpe)
-        if gpe or not getgenv().EPT_Running or not State.UseAllItemsEnabled then return end
-        if input.KeyCode == currentActivateKey then task.spawn(function() local n = ActivateAllItems(); Fluent:Notify({Title = "Items Used", Content = tostring(n).." activated", Duration = 2}) end) end
-    end)
-end
-local function ReconnectNoclipInput()
-    if NoclipKeybindConnection then NoclipKeybindConnection:Disconnect(); NoclipKeybindConnection = nil end
-    if not currentNoclipKey or not State.NoclipKeybindEnabled then return end
-    NoclipKeybindConnection = UserInputService.InputBegan:Connect(function(input, gpe) if gpe or not getgenv().EPT_Running or not State.NoclipKeybindEnabled then return end if input.KeyCode == currentNoclipKey then SetNoclip(not State.NoclipEnabled) end end)
-end
-local function ReconnectFlyInput()
-    if FlyKeybindConnection then FlyKeybindConnection:Disconnect(); FlyKeybindConnection = nil end
-    if not currentFlyKey or not State.FlyKeybindEnabled then return end
-    FlyKeybindConnection = UserInputService.InputBegan:Connect(function(input, gpe) if gpe or not getgenv().EPT_Running or not State.FlyKeybindEnabled then return end if input.KeyCode == currentFlyKey then SetFly(not State.FlyEnabled) end end)
-end
+local function ReconnectActivateInput() if ActivateInputConnection then ActivateInputConnection:Disconnect(); ActivateInputConnection = nil end if not currentActivateKey or not State.UseAllItemsEnabled then return end ActivateInputConnection = UserInputService.InputBegan:Connect(function(i, g) if g or not getgenv().EPT_Running or not State.UseAllItemsEnabled then return end if i.KeyCode == currentActivateKey then task.spawn(function() local n = ActivateAllItems(); Fluent:Notify({Title = "Items Used", Content = tostring(n).." activated", Duration = 2}) end) end end) end
+local function ReconnectNoclipInput() if NoclipKeybindConnection then NoclipKeybindConnection:Disconnect(); NoclipKeybindConnection = nil end if not currentNoclipKey or not State.NoclipKeybindEnabled then return end NoclipKeybindConnection = UserInputService.InputBegan:Connect(function(i, g) if g or not getgenv().EPT_Running or not State.NoclipKeybindEnabled then return end if i.KeyCode == currentNoclipKey then SetNoclip(not State.NoclipEnabled) end end) end
+local function ReconnectFlyInput() if FlyKeybindConnection then FlyKeybindConnection:Disconnect(); FlyKeybindConnection = nil end if not currentFlyKey or not State.FlyKeybindEnabled then return end FlyKeybindConnection = UserInputService.InputBegan:Connect(function(i, g) if g or not getgenv().EPT_Running or not State.FlyKeybindEnabled then return end if i.KeyCode == currentFlyKey then SetFly(not State.FlyEnabled) end end) end
 local Mouse = LocalPlayer:GetMouse()
-local function ReconnectTeleportInput()
-    if TeleportInputConnection then TeleportInputConnection:Disconnect(); TeleportInputConnection = nil end
-    if not State.ClickTeleportEnabled then return end
-    TeleportInputConnection = Mouse.Button1Down:Connect(function() if not getgenv().EPT_Running or not State.ClickTeleportEnabled then return end if not UserInputService:IsKeyDown(currentTeleportKey) or not Mouse.Target then return end local char = LocalPlayer.Character if char then char:MoveTo(Mouse.Hit.p) end end)
-end
+local function ReconnectTeleportInput() if TeleportInputConnection then TeleportInputConnection:Disconnect(); TeleportInputConnection = nil end if not State.ClickTeleportEnabled then return end TeleportInputConnection = Mouse.Button1Down:Connect(function() if not getgenv().EPT_Running or not State.ClickTeleportEnabled then return end if not UserInputService:IsKeyDown(currentTeleportKey) or not Mouse.Target then return end local c = LocalPlayer.Character if c then c:MoveTo(Mouse.Hit.p) end end) end
 
 Tabs.Farm:AddToggle("AutoRebirthToggle", {Title = "Auto-Rebirth", Description = "Rebirths when available and stops loops", Default = false, Callback = function(V) State.AutoRebirth = V; if V then MainFarmLoop() end end})
 Tabs.Farm:AddToggle("AutoTycoonToggle", {Title = "Auto-Tycoon", Description = "Collects money, buys upgrades when possible", Default = false, Callback = function(V) State.AutoTycoon = V; if V then MainFarmLoop() end end})
