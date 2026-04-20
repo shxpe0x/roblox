@@ -91,12 +91,16 @@ local function SafeTeleport(hrp, targetCFrame)
     lastTeleportTick = tick()
     
     local wasAnchored = hrp.Anchored
-    hrp.Anchored = true
-    hrp.CFrame = targetCFrame
+    pcall(function()
+        hrp.Anchored = true
+        hrp.CFrame = targetCFrame
+    end)
     task.wait(0.05)
-    if not wasAnchored then hrp.Anchored = false end
-    local humanoid = hrp.Parent and hrp.Parent:FindFirstChildOfClass("Humanoid")
-    if humanoid then pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end) end
+    pcall(function()
+        if not wasAnchored then hrp.Anchored = false end
+        local humanoid = hrp.Parent and hrp.Parent:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
+    end)
 end
 
 local function SmartWait(duration)
@@ -199,7 +203,17 @@ local function CheckRebirth()
         local rb = t:FindFirstChild("Auxiliary") and t.Auxiliary:FindFirstChild("Rebirth") and t.Auxiliary.Rebirth:FindFirstChild("Button")
         if rb and rb:IsA("BasePart") then
             SafeTeleport(hrp, rb.CFrame + Vector3.new(0, 3, 0)); task.wait(0.5)
-            pcall(function() local p = rb:FindFirstChildWhichIsA("ProximityPrompt", true) if p then p:InputHoldBegin() task.wait(10) p:InputHoldEnd() else firetouchinterest(hrp, rb, 0) task.wait(0.05) firetouchinterest(hrp, rb, 1) end end)
+            
+            local prompt = rb:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then
+                prompt:InputHoldBegin()
+                local aborted = SmartWait(10)
+                prompt:InputHoldEnd()
+                if aborted then return false end
+            else
+                firetouchinterest(hrp, rb, 0); task.wait(0.05); firetouchinterest(hrp, rb, 1)
+            end
+            
             State.AutoTycoon = false; State.AutoLoot = false; State.AutoRebirth = false
             pcall(function() Options.AutoTycoonToggle:SetValue(false) end) pcall(function() Options.AutoLootToggle:SetValue(false) end) pcall(function() Options.AutoRebirthToggle:SetValue(false) end)
             Fluent:Notify({Title = "Rebirthed!", Content = "Loops stopped", Duration = 5})
